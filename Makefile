@@ -11,10 +11,14 @@ rstms_modules = $(shell awk <go.mod '/^module/{next} /rstms/{print $$1}')
 
 gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(info git status is clean))
 
+template_files = template/ipxe/BOOTX64.EFI template/ipxe/autoexec.ipxe
+
 $(program): build
 
-build: fmt
-	fix go build
+build: fmt $(template_files)
+
+	fix go build . ./...
+	go build
 
 fmt: go.sum
 	fix go fmt . ./...
@@ -43,6 +47,11 @@ update:
 	@echo updating modules
 	$(foreach module,$(rstms_modules),go get $(module)@latest;)
 
+mirrors:
+	scripts/update_mirrors
+	find template -type d -exec chmod 0755 \{\} \;
+	find template -type f -exec chmod 0644 \{\} \;
+
 clean:
 	rm -f $(program) *.core 
 	go clean
@@ -53,3 +62,9 @@ sterile: clean
 	go clean -cache
 	go clean -modcache
 	rm -f go.mod go.sum
+
+template/ipxe/BOOTX64.EFI: template/ipxe/netboot.xyz.efi
+	cp $< $@
+
+template/ipxe/autoexec.ipxe: template/ipxe/menu.ipxe
+	cp $< $@

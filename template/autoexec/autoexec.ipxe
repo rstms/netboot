@@ -1,0 +1,66 @@
+#!ipxe
+
+:start
+
+set netboot_name {{netboot_name}}
+set netboot_domain {{netboot_domain}}
+set netboot_version {{netboot_version}}
+set netboot_ntp_server {{netboot_ntp_server}}
+set netboot_timeout {{netboot_timeout_seconds}}
+
+set netboot_url https://${netboot_name}.${netboot_domain}
+
+:dhcp_retry
+dhcp && goto dhcp_ok
+echo "DHCP failed, retrying in 1 second"
+sleep 1
+goto dhcp_retry
+:dhcp_ok
+
+echo before NTP ${unixtime}
+:ntp_retry
+echo Setting clock with NTP ${ntp_server}
+ntp ${ntp_server} && goto ntp_ok
+echo "NTP failed, retrying in 1 second"
+sleep 1
+goto ntp_retry
+:ntp_ok
+echo after NTP ${unixtime}
+
+set cls:hex 1b:5b:4a  # ANSI clear screen sequence - "^[[J"
+set cls ${cls:string}
+
+#console --x 1024 --y 768
+#console --picture ${netboot_url}/netboot.png
+
+:main_menu
+clear main_menu_choice
+menu Reliance Systems Netboot v${netboot_version} [${netboot_url}]
+item netboot MAC Address Autoinstall
+item local Boot from local hdd
+item shell iPXE shell
+choose --timeout ${netboot_timeout} --default netboot main_menu_choice || goto local
+goto ${main_menu_choice}
+goto start
+
+
+:error
+echo Error occured, press any key to restart...
+prompt
+goto start
+
+:netboot
+chain --replace ${netboot_url}/${net0/mac}.ipxe ||
+goto error
+
+:local
+echo Booting from local disks...
+exit 1
+
+:shell
+echo Type "exit" to return to menu.
+shell
+goto main_menu
+
+:menu_exit
+exit

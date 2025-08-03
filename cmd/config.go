@@ -54,7 +54,6 @@ optional edit command opens current config file in system editor
 	Args: cobra.RangeArgs(0, 1),
 	Run: func(cmd *cobra.Command, args []string) {
 
-		name := ProgramName()
 		if len(args) > 0 {
 			switch args[0] {
 			case "cat":
@@ -76,7 +75,7 @@ optional edit command opens current config file in system editor
 			cobra.CheckErr(err)
 			hostname, err := os.Hostname()
 			cobra.CheckErr(err)
-			fmt.Printf("# %s config\n", name)
+			fmt.Printf("# %s config\n", ProgramName)
 			fmt.Printf("# active: %s\n", filepath.Clean(viper.ConfigFileUsed()))
 			fmt.Printf("# generated: %s by %s@%s (%s_%s)\n",
 				time.Now().Format(time.DateTime),
@@ -90,11 +89,11 @@ optional edit command opens current config file in system editor
 
 			userConfig, err := os.UserConfigDir()
 			cobra.CheckErr(err)
-			fmt.Printf("# default_config_dir: %s\n", filepath.Join(userConfig, name))
+			fmt.Printf("# default_config_dir: %s\n", filepath.Join(userConfig, ProgramName))
 
 			userCache, err := os.UserCacheDir()
 			cobra.CheckErr(err)
-			fmt.Printf("# default_cache_dir: %s\n", filepath.Join(userCache, name))
+			fmt.Printf("# default_cache_dir: %s\n", filepath.Join(userCache, ProgramName))
 			fmt.Println("")
 		}
 
@@ -108,7 +107,7 @@ func initConfigFile() {
 	if file == "" {
 		userConfig, err := os.UserConfigDir()
 		cobra.CheckErr(err)
-		dir := filepath.Join(userConfig, ProgramName())
+		dir := filepath.Join(userConfig, ProgramName)
 		if !IsDir(dir) {
 			if !Confirm(fmt.Sprintf("Create directory '%s'", dir)) {
 				return
@@ -128,7 +127,6 @@ func initConfigFile() {
 	cobra.CheckErr(err)
 	fmt.Printf("Default configuration written to %s\n", file)
 }
-
 func editConfigFile() {
 	var editCommand string
 	if runtime.GOOS == "windows" {
@@ -149,7 +147,6 @@ func editConfigFile() {
 	err := editor.Run()
 	cobra.CheckErr(err)
 }
-
 func init() {
 	rootCmd.AddCommand(configCmd)
 }

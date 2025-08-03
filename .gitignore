@@ -1,7 +1,13 @@
 netboot
-goon-template
 notes
 cruft
 *.core
 *.log
 *postactivate
+template/debian
+template/alpine
+template/pub
+template/ipxe
+template/netboot
+bootimg/testdata/*
+bootiso/testdata/*

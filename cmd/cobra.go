@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-var ViperPrefix = ProgramName() + ".cli."
+var ViperPrefix = ProgramName + ".cli."
 var LogFile *os.File
 
 var CONFIRM_ACCEPT_MESSAGE = "Proceeding"
@@ -152,12 +152,8 @@ func ExpandPath(pathname string) string {
 	return pathname
 }
 
-func ProgramName() string {
-	return strings.ToLower(strings.ReplaceAll(rootCmd.Name(), "-", "_"))
-}
-
 func InitConfig() {
-	viper.SetEnvPrefix(ProgramName())
+	viper.SetEnvPrefix(ProgramName)
 	viper.AutomaticEnv()
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
@@ -166,9 +162,9 @@ func InitConfig() {
 		cobra.CheckErr(err)
 		userConfig, err := os.UserConfigDir()
 		cobra.CheckErr(err)
-		viper.AddConfigPath(filepath.Join(home, "."+ProgramName()))
-		viper.AddConfigPath(filepath.Join(userConfig, ProgramName()))
-		viper.AddConfigPath(filepath.Join("/etc", ProgramName()))
+		viper.AddConfigPath(filepath.Join(home, "."+ProgramName))
+		viper.AddConfigPath(filepath.Join(userConfig, ProgramName))
+		viper.AddConfigPath(filepath.Join("/etc", ProgramName))
 		viper.SetConfigType("yaml")
 		viper.SetConfigName("config")
 	}

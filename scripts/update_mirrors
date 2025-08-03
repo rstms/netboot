@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+(
+    scripts/update_mirror openbsd 7 5 &
+    scripts/update_mirror debian bookworm &
+    scripts/update_mirror alpine 3 22 1 &
+)
+wait
+echo "downloads complete"
