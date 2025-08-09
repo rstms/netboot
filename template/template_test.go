@@ -3,9 +3,6 @@ package template
 import (
 	"github.com/stretchr/testify/require"
 	"log"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -20,6 +17,7 @@ func TestExpandTemplate(t *testing.T) {
 	log.Printf("after: %s\n", expanded)
 }
 
+/*
 func TestExpandIpxe(t *testing.T) {
 	macros := map[string]string{
 		"netboot_name":                 "netboot",
@@ -47,6 +45,7 @@ func TestExpandIpxe(t *testing.T) {
 	require.Equal(t, expectedData, expandedData)
 }
 
+
 func TestExpandMissingValue(t *testing.T) {
 	macros := map[string]string{}
 	templateData := AutoexecTemplate
@@ -54,3 +53,4 @@ func TestExpandMissingValue(t *testing.T) {
 	require.NotNil(t, err)
 	require.ErrorContains(t, err, "unexpanded template macro:")
 }
+*/

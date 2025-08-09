@@ -70,6 +70,7 @@ func (m *MkBoot) mkbootAlpine() error {
 	panic("fixme")
 }
 
+/*
 func (m *MkBoot) mkbootDebianNew() error {
 	fmt.Printf("mkbootDebian: %+v\n", *m.Config)
 
@@ -87,6 +88,7 @@ func (m *MkBoot) mkbootDebianNew() error {
 		"initrd.gz",
 	)
 
+	srcFilename := filepath.Join(m.Dir, m.Config.Address+".initrd.gz")
 	dstFilename := filepath.Join(m.Dir, m.Config.Address+".initrd.gz")
 
 	srcData, err := template.Debian.ReadFile(srcFilename)
@@ -99,13 +101,14 @@ func (m *MkBoot) mkbootDebianNew() error {
 		InitFile{DstName: "package.tgz", SrcName: m.Tarball, Mode: 0600, UID: 0, GID: 0},
 	}
 
-	err = GenerateInitrd(dstFilename, srcData, files)
+	err = GenerateInitrd(dstFilename, ssrcData, files)
 	if err != nil {
 		return err
 	}
 
 	return nil
 }
+*/
 
 func (m *MkBoot) mkbootDebian() error {
 	fmt.Printf("mkbootDebian: %+v\n", *m.Config)
