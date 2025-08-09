@@ -1,28 +1,25 @@
 package server
 
 import (
-	"encoding/json"
-	"log"
-	"os"
+	common "github.com/rstms/go-common"
 )
 
 func FormatJSON(v any) string {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		log.Fatalf("failed formatting JSON: %v", err)
-	}
-	return string(data)
+	return common.FormatJSON(v)
 }
 
 func IsDir(path string) bool {
-	stat, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return stat.IsDir()
+	return common.IsDir(path)
 }
 
-func IsFile(pathname string) bool {
-	_, err := os.Stat(pathname)
-	return !os.IsNotExist(err)
+func IsFile(path string) bool {
+	return common.IsFile(path)
+}
+
+func Fatal(err error) error {
+	return common.Fatal(err)
+}
+
+func Fatalf(format string, args ...interface{}) error {
+	return common.Fatalf(format, args...)
 }

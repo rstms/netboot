@@ -1,61 +1,124 @@
 package server
 
 import (
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"github.com/cavaliergopher/cpio"
 	"io"
 	"io/fs"
+	"log"
+	"os"
 )
 
 type InitFile struct {
-	Name string
-	Data []byte
-	Mode fs.FileMode
-	UID  int
-	GID  int
+	DstName string
+	SrcName string
+	Mode    fs.FileMode
+	UID     int
+	GID     int
 }
 
-type Initrd struct {
-	files     []InitFile
-	reader    *cpio.Reader
-	zipReader *gzip.Reader
-	writer    *cpio.Writer
-	zipWriter *gzip.Writer
-	written   bool
-}
+func GenerateInitrd(dstFilename string, srcData []byte, files []InitFile) error {
+	echan := make(chan error)
 
-func NewInitrd(r io.Reader) (*Initrd, error) {
-	i := Initrd{
-		files: []InitFile{},
-	}
-	var err error
-	i.zipReader, err = gzip.NewReader(r)
+	tempFile, err := os.CreateTemp("", "initrd*")
 	if err != nil {
-		return nil, err
+		return Fatal(err)
 	}
-	i.reader = cpio.NewReader(i.zipReader)
-	return &i, nil
+	err = generate(tempFile, srcData, files, echan)
+	if err != nil {
+		return Fatal(err)
+	}
+	var messages string
+	for done := false; !done; {
+		select {
+		case err := <-echan:
+			messages += fmt.Sprintf("%v\n", err)
+		default:
+			done = true
+		}
+	}
+
+	if messages != "" {
+		return Fatalf("close failures: %s", messages)
+	}
+
+	err = zipOutput(dstFilename, tempFile.Name())
+	if err != nil {
+		return Fatal(err)
+	}
+	return nil
 }
 
-func (i *Initrd) Write(w io.Writer) error {
-	i.zipWriter = gzip.NewWriter(w)
-	i.writer = cpio.NewWriter(i.zipWriter)
+func zipOutput(dstFilename, srcFilename string) error {
+	dstFile, err := os.Create(dstFilename)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer dstFile.Close()
+
+	zipper := gzip.NewWriter(dstFile)
+	defer zipper.Close()
+
+	srcFile, err := os.Open(srcFilename)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer srcFile.Close()
+
+	_, err = io.Copy(zipper, srcFile)
+	if err != nil {
+		return Fatal(err)
+	}
+	return nil
+}
+
+func generate(dstFile *os.File, srcData []byte, files []InitFile, echan chan error) error {
+
+	unzipper, err := gzip.NewReader(bytes.NewBuffer(srcData))
+	if err != nil {
+		return Fatal(err)
+	}
+	defer func() {
+		err := unzipper.Close()
+		if err != nil {
+			echan <- Fatalf("failed closing unzipper: %v", err)
+		}
+	}()
+
+	reader := cpio.NewReader(unzipper)
+
+	defer func() {
+		err := dstFile.Close()
+		if err != nil {
+			echan <- Fatalf("failed closing output file: %v", err)
+		}
+	}()
+
+	writer := cpio.NewWriter(dstFile)
+	defer func() {
+		err := writer.Close()
+		if err != nil {
+			echan <- Fatalf("failed closing cpio writer: %v", err)
+		}
+	}()
+
 	for {
-		header, err := i.reader.Next()
+		header, err := reader.Next()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			return err
+			return Fatal(err)
 		}
 		//fmt.Printf("read header: %s type=%v, size=%d\n", header.Name, header.Mode, header.Size)
 
 		size := header.Size
 
-		err = i.writer.WriteHeader(header)
+		err = writer.WriteHeader(header)
 		if err != nil {
-			return err
+			return Fatal(err)
 		}
 		//fmt.Printf("\twrote header: %s type=%v, size=%d\n", header.Name, header.Mode, header.Size)
 
@@ -65,87 +128,74 @@ func (i *Initrd) Write(w io.Writer) error {
 			var writeSize int64
 			for readSize < size {
 				buf := make([]byte, header.Size)
-				rChunk, err := i.reader.Read(buf)
+				rChunk, err := reader.Read(buf)
 				if err != nil {
 					if err != io.EOF {
-						return err
+						return Fatal(err)
 					}
 				}
 				//fmt.Printf("\tread data: %d bytes\n", rChunk)
 				readSize += int64(rChunk)
 
-				wChunk, err := i.writer.Write(buf[:rChunk])
+				wChunk, err := writer.Write(buf[:rChunk])
 				if err != nil {
-					return err
+					return Fatal(err)
 				}
 				//fmt.Printf("\twrote data: %d bytes\n", wChunk)
 				writeSize += int64(wChunk)
 			}
 
 			if readSize != header.Size {
-				return fmt.Errorf("read total length (%d) mismatches header size (%d)\n", readSize, header.Size)
+				return Fatalf("read total length (%d) mismatches header size (%d)\n", readSize, header.Size)
 			}
 
 			if writeSize != header.Size {
-				return fmt.Errorf("write total length (%d) mismatches header size (%d)\n", writeSize, header.Size)
+				return Fatalf("write total length (%d) mismatches header size (%d)\n", writeSize, header.Size)
 			}
 		}
 	}
-	for _, file := range i.files {
-		header := cpio.Header{
-			Name: file.Name,
-			Size: int64(len(file.Data)),
-			Mode: cpio.FileMode(file.Mode),
-			Uid:  file.UID,
-			Guid: file.GID,
-		}
-		//fmt.Printf("adding: %s\n", header.Name)
-		err := i.writer.WriteHeader(&header)
+
+	for _, file := range files {
+		err := copyIn(writer, &file)
 		if err != nil {
-			return err
-		}
-		_, err = i.writer.Write(file.Data)
-		if err != nil {
-			return err
+			return Fatal(err)
 		}
 	}
-	i.written = true
+
+	log.Println("Initrd.Write complete")
 	return nil
 }
 
-func (i *Initrd) AddFile(name string, data []byte, mode fs.FileMode, uid, gid int) error {
-	if i.written {
-		return fmt.Errorf("cannot add; already written")
-	}
-	file := InitFile{name, data, mode, uid, gid}
-	i.files = append(i.files, file)
-	return nil
-}
+func copyIn(writer *cpio.Writer, file *InitFile) error {
 
-func (i *Initrd) Close() error {
-	if i.reader != nil {
-		i.reader = nil
+	stat, err := os.Stat(file.SrcName)
+	if err != nil {
+		return Fatal(err)
 	}
-	if i.zipReader != nil {
-		err := i.zipReader.Close()
-		if err != nil {
-			return err
-		}
-		i.zipReader = nil
+
+	header := cpio.Header{
+		Name: file.DstName,
+		Size: stat.Size(),
+		Mode: cpio.FileMode(file.Mode),
+		Uid:  file.UID,
+		Guid: file.GID,
 	}
-	if i.writer != nil {
-		err := i.writer.Close()
-		if err != nil {
-			return err
-		}
-		i.writer = nil
+	//fmt.Printf("adding: %s\n", header.Name)
+
+	err = writer.WriteHeader(&header)
+	if err != nil {
+		return Fatal(err)
 	}
-	if i.zipWriter != nil {
-		err := i.zipWriter.Close()
-		if err != nil {
-			return err
-		}
-		i.zipWriter = nil
+
+	fp, err := os.Open(file.SrcName)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer fp.Close()
+
+	_, err = io.Copy(writer, fp)
+	if err != nil {
+		return Fatal(err)
 	}
 	return nil
 }

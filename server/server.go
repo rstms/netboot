@@ -144,8 +144,15 @@ func (s *Server) Stop() error {
 
 func (s *Server) Start() error {
 
+	// FIXME: validate client certificates
+
 	netbootFS := os.DirFS(s.NetbootDir)
 	http.HandleFunc("GET /", s.hosts.DefaultHandler)
+	http.HandleFunc("GET /iso/netboot.iso", s.hosts.NetbootISOHandler)
+	http.HandleFunc("GET /ipxe/", s.hosts.IPXEHandler)
+	http.HandleFunc("GET /debian/", s.hosts.DebianHandler)
+	http.HandleFunc("GET /pub/OpenBSD/", s.hosts.OpenBSDHandler)
+
 	http.Handle("GET /{basename}", http.FileServer(http.FS(netbootFS)))
 	/*
 		http.Handle("GET /netboot/{basename}.ipxe{$}", http.FileServer(http.FS(netbootFS)))

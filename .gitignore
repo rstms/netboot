@@ -9,5 +9,6 @@ template/alpine
 template/pub
 template/ipxe
 template/netboot
+template/openbsd
 bootimg/testdata/*
 bootiso/testdata/*

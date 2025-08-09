@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/rstms/netboot/template"
+	"io"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -17,14 +19,15 @@ type MkBoot struct {
 	Tarball           string
 	Response          string
 	DiskLabelTemplate string
+	URL               string
 }
 
-func NewMkBoot(config *Config, dir, tarball, response, diskLabelTemplate string) *MkBoot {
-	m := MkBoot{config, dir, tarball, response, diskLabelTemplate}
+func NewMkBoot(config *Config, dir, tarball, response, diskLabelTemplate, url string) *MkBoot {
+	m := MkBoot{config, dir, tarball, response, diskLabelTemplate, url}
 	return &m
 }
 
-func (m *MkBoot) Generate() ([]string, error) {
+func (m *MkBoot) Generate() error {
 	fmt.Printf("Generate: %s\n", FormatJSON(m))
 	switch strings.ToLower(m.Config.OS) {
 	case "openbsd":
@@ -34,10 +37,10 @@ func (m *MkBoot) Generate() ([]string, error) {
 	case "alpine":
 		return m.mkbootAlpine()
 	}
-	return []string{}, fmt.Errorf("unexpected OS: '%s'", m.Config.OS)
+	return fmt.Errorf("unexpected OS: '%s'", m.Config.OS)
 }
 
-func (m *MkBoot) mkbootOpenBSD() ([]string, error) {
+func (m *MkBoot) mkbootOpenBSD() error {
 	script := fmt.Sprintf("/root/mkboot.%s", m.Config.OS)
 	args := []string{script, m.Config.Address}
 	if m.Config.Serial != "" {
@@ -55,79 +58,150 @@ func (m *MkBoot) mkbootOpenBSD() ([]string, error) {
 		for _, eline := range elines {
 			log.Printf("stderr: %s\n", eline)
 		}
-		return elines, fmt.Errorf("script %s failed: %v\n", script, err)
+		return Fatalf("script %s failed: %v\n", script, err)
 	}
 	if cmd.ProcessState.ExitCode() != 0 {
-		log.Fatalf("uncaught process failure")
+		return Fatalf("uncaught process failure")
 	}
-	outputLines := strings.Split(stdout.String(), "\n")
-	return outputLines, nil
+	return nil
 }
 
-func (m *MkBoot) mkbootAlpine() ([]string, error) {
-	panic("todo")
+func (m *MkBoot) mkbootAlpine() error {
+	panic("fixme")
 }
 
-type CpioFile struct {
-	Name string
-	Body string
-}
-
-func (m *MkBoot) mkbootDebian() ([]string, error) {
+func (m *MkBoot) mkbootDebianNew() error {
 	fmt.Printf("mkbootDebian: %+v\n", *m.Config)
-	lines := []string{}
-	distFilename := filepath.Join(
+
+	srcFilename := filepath.Join(
 		"debian",
 		"dists",
 		m.Config.Version,
 		"main",
-		"installer-amd64",
+		"installer-"+m.Config.Arch,
 		"current",
 		"images",
 		"netboot",
 		"debian-installer",
-		"amd64",
+		m.Config.Arch,
 		"initrd.gz",
 	)
-	infile, err := template.Debian.Open(distFilename)
+
+	dstFilename := filepath.Join(m.Dir, m.Config.Address+".initrd.gz")
+
+	srcData, err := template.Debian.ReadFile(srcFilename)
 	if err != nil {
-		return lines, err
+		return Fatal(err)
 	}
-	lines = append(lines, "initrd source: "+distFilename)
-	initrd, err := NewInitrd(infile)
+
+	files := []InitFile{
+		InitFile{DstName: "preseed.cfg", SrcName: m.Response, Mode: 0600, UID: 0, GID: 0},
+		InitFile{DstName: "package.tgz", SrcName: m.Tarball, Mode: 0600, UID: 0, GID: 0},
+	}
+
+	err = GenerateInitrd(dstFilename, srcData, files)
 	if err != nil {
-		return lines, err
+		return err
 	}
-	responseData, err := os.ReadFile(m.Response)
+
+	return nil
+}
+
+func (m *MkBoot) mkbootDebian() error {
+	fmt.Printf("mkbootDebian: %+v\n", *m.Config)
+
+	srcFilename := filepath.Join(
+		"debian",
+		"dists",
+		m.Config.Version,
+		"main",
+		"installer-"+m.Config.Arch,
+		"current",
+		"images",
+		"netboot",
+		"debian-installer",
+		m.Config.Arch,
+		"initrd.gz",
+	)
+
+	tempDir, err := os.MkdirTemp("", "initrd*")
 	if err != nil {
-		return lines, err
+		return Fatal(err)
 	}
-	err = initrd.AddFile("preseed.cfg", responseData, 0600, 0, 0)
+
+	err = copyFileFS(tempDir, "initrd.gz", template.Debian, srcFilename)
 	if err != nil {
-		return lines, err
+		return Fatal(err)
 	}
-	lines = append(lines, "added preseed.cfg")
-	tarballData, err := os.ReadFile(m.Tarball)
+
+	err = copyFile(filepath.Join(tempDir, "preseed.cfg"), m.Response)
 	if err != nil {
-		return lines, err
+		return Fatal(err)
 	}
-	err = initrd.AddFile("package.tgz", tarballData, 0600, 0, 0)
+
+	err = copyFile(filepath.Join(tempDir, "package.tgz"), m.Tarball)
 	if err != nil {
-		return lines, err
+		return Fatal(err)
 	}
-	lines = append(lines, "added package.tgz")
-	outFilename := filepath.Join(m.Dir, m.Config.Address+".initrd")
-	outFile, err := os.Create(outFilename)
+
+	err = run("", tempDir, "gunzip", "initrd.gz")
 	if err != nil {
-		return lines, err
+		return Fatal(err)
 	}
-	defer outFile.Close()
-	err = initrd.Write(outFile)
+
+	err = run("preseed.cfg\npackage.tgz\n", tempDir, "cpio", "-H", "sv4cpio", "-o", "-A", "-F", "initrd")
 	if err != nil {
-		return lines, err
+		return Fatal(err)
 	}
-	lines = append(lines, "initrd: "+outFilename)
-	return lines, nil
+
+	err = run("", tempDir, "gzip", "initrd")
+	if err != nil {
+		return Fatal(err)
+	}
+
+	srcFile := filepath.Join(tempDir, "initrd.gz")
+	dstFile := filepath.Join(m.Dir, m.Config.Address+".initrd.gz")
+
+	err = copyFile(dstFile, srcFile)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	return nil
+}
+
+func copyFileFS(tempDir, dstName string, srcFS fs.FS, srcName string) error {
+	srcFile, err := srcFS.Open(srcName)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer srcFile.Close()
+	dstFile, err := os.Create(filepath.Join(tempDir, dstName))
+	if err != nil {
+		return Fatal(err)
+	}
+	defer dstFile.Close()
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		return Fatal(err)
+	}
+	return nil
+}
+
+func run(stdin, tempDir, command string, args ...string) error {
+
+	cmd := exec.Command(command, args...)
+	cmd.Dir = tempDir
+	if stdin != "" {
+		cmd.Stdin = bytes.NewBuffer([]byte(stdin))
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		return Fatal(err)
+	}
+	return nil
 }
 
 /*

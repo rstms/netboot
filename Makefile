@@ -51,10 +51,13 @@ mirrors:
 	scripts/update_mirrors
 	find template -type d -exec chmod 0755 \{\} \;
 	find template -type f -exec chmod 0644 \{\} \;
+	find template/pub/OpenBSD -type f -name install??.??? -exec mv \{\} template/openbsd \;
 
 clean:
 	rm -f $(program) *.core 
 	go clean
+	rm -rf ~/.cache/netboot
+	mkdir ~/.cache/netboot
 
 sterile: clean
 	which $(program) && go clean -i || true

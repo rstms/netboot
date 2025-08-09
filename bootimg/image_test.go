@@ -2,7 +2,7 @@ package bootimg
 
 import (
 	"bytes"
-	"github.com/rstms/netboot/common"
+	common "github.com/rstms/go-common"
 	"github.com/rstms/netboot/template"
 	"github.com/stretchr/testify/require"
 	"io"
