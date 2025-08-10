@@ -538,7 +538,7 @@ func (c *HostCache) GenerateISO(url, isoDir, isoFile string, config *Config) err
 	//defer os.Remove(autoexec)
 
 	efiBin := filepath.Join(isoDir, "BOOTX64.EFI")
-	err = c.copyTemplateFile(template.Ipxe, efiBin, filepath.Join("ipxe", "netboot.xyx.efi"))
+	err = c.copyTemplateFile(template.Ipxe, efiBin, filepath.Join("ipxe", "netboot.xyz.efi"))
 	if err != nil {
 		return err
 	}
