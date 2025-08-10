@@ -70,46 +70,6 @@ func (m *MkBoot) mkbootAlpine() error {
 	panic("fixme")
 }
 
-/*
-func (m *MkBoot) mkbootDebianNew() error {
-	fmt.Printf("mkbootDebian: %+v\n", *m.Config)
-
-	srcFilename := filepath.Join(
-		"debian",
-		"dists",
-		m.Config.Version,
-		"main",
-		"installer-"+m.Config.Arch,
-		"current",
-		"images",
-		"netboot",
-		"debian-installer",
-		m.Config.Arch,
-		"initrd.gz",
-	)
-
-	srcFilename := filepath.Join(m.Dir, m.Config.Address+".initrd.gz")
-	dstFilename := filepath.Join(m.Dir, m.Config.Address+".initrd.gz")
-
-	srcData, err := template.Debian.ReadFile(srcFilename)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	files := []InitFile{
-		InitFile{DstName: "preseed.cfg", SrcName: m.Response, Mode: 0600, UID: 0, GID: 0},
-		InitFile{DstName: "package.tgz", SrcName: m.Tarball, Mode: 0600, UID: 0, GID: 0},
-	}
-
-	err = GenerateInitrd(dstFilename, ssrcData, files)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-*/
-
 func (m *MkBoot) mkbootDebian() error {
 	fmt.Printf("mkbootDebian: %+v\n", *m.Config)
 
@@ -137,6 +97,11 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
+	initrdName, err := UnzipFile(filepath.Join(tempDir, "initrd.gz"))
+	if err != nil {
+		return Fatal(err)
+	}
+
 	err = copyFile(filepath.Join(tempDir, "preseed.cfg"), m.Response)
 	if err != nil {
 		return Fatal(err)
@@ -147,25 +112,35 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
-	err = run("", tempDir, "gunzip", "initrd.gz")
+	newInitrdName := initrdName + ".new"
+	addFiles := []string{
+		filepath.Join(tempDir, "preseed.cfg"),
+		filepath.Join(tempDir, "package.tgz"),
+	}
+	err = GenerateInitrd(newInitrdName, initrdName, addFiles)
 	if err != nil {
 		return Fatal(err)
 	}
 
-	err = run("preseed.cfg\npackage.tgz\n", tempDir, "cpio", "-H", "sv4cpio", "-o", "-A", "-F", "initrd")
+	/*
+		err = run("preseed.cfg\npackage.tgz\n", tempDir, "cpio", "-H", "sv4cpio", "-o", "-A", "-F", "initrd")
+		if err != nil {
+			return Fatal(err)
+		}
+	*/
+	err = os.Rename(newInitrdName, initrdName)
 	if err != nil {
 		return Fatal(err)
 	}
 
-	err = run("", tempDir, "gzip", "initrd")
+	initrdName, err = ZipFile(initrdName)
 	if err != nil {
 		return Fatal(err)
 	}
 
-	srcFile := filepath.Join(tempDir, "initrd.gz")
 	dstFile := filepath.Join(m.Dir, m.Config.Address+".initrd.gz")
 
-	err = copyFile(dstFile, srcFile)
+	err = copyFile(dstFile, initrdName)
 	if err != nil {
 		return Fatal(err)
 	}

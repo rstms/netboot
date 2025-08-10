@@ -12,3 +12,4 @@ template/netboot
 template/openbsd
 bootimg/testdata/*
 bootiso/testdata/*
+server/testdata/*
