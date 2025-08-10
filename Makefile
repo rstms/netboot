@@ -11,7 +11,9 @@ rstms_modules = $(shell awk <go.mod '/^module/{next} /rstms/{print $$1}')
 
 gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(info git status is clean))
 
-template_files = template/ipxe/BOOTX64.EFI template/ipxe/autoexec.ipxe template/certs/keymaster.pem
+template_files = \
+  template/ipxe/BOOTX64.EFI \
+  template/ipxe/autoexec.ipxe
 
 $(program): build
 
@@ -52,12 +54,16 @@ mirrors:
 	find template -type d -exec chmod 0755 \{\} \;
 	find template -type f -exec chmod 0644 \{\} \;
 	find template/pub/OpenBSD -type f -name install??.??? -exec mv \{\} template/openbsd \;
+	scripts/update_debian_initrd
 
 clean:
 	rm -f $(program) *.core 
 	go clean
 	rm -rf ~/.cache/netboot
 	mkdir ~/.cache/netboot
+	rm -rf template/certs/*
+	touch template/certs/.placeholder
+	rm -f template/robots.txt template/wget-log*
 
 sterile: clean
 	which $(program) && go clean -i || true
@@ -71,7 +77,3 @@ template/ipxe/BOOTX64.EFI: template/ipxe/netboot.xyz.efi
 
 template/ipxe/autoexec.ipxe: template/ipxe/menu.ipxe
 	cp $< $@
-
-template/certs/keymaster.pem: /etc/ssl/keymaster.pem
-	cp $< $@
-

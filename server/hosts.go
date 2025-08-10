@@ -60,7 +60,11 @@ type DeleteResponse struct {
 
 var MAC_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})$`)
 var IPXE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})\.ipxe$`)
-var PKG_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})\.tgz$`)
+var KERNEL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2}).kernel$`)
+var INITRD_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2}).initrd$`)
+var RESPONSE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2}).conf$`)
+var ALPINE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2}).apkvol.tar.gz$`)
+var TARBALL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})\.tgz$`)
 
 type HostCache struct {
 	dir   string
@@ -221,24 +225,19 @@ func (c *HostCache) NetbootISOHandler(w http.ResponseWriter, r *http.Request) {
 func (c *HostCache) IPXEHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("IPXEHandler: %s %s\n", r.Method, r.URL)
 	dir, name := path.Split(r.URL.Path)
-	log.Printf("path=%s\n", r.URL.Path)
-	log.Printf("dir=%s\n", dir)
-	log.Printf("name=%s\n", name)
 	if dir != "/ipxe/" {
 		fail(w, "invalid path", http.StatusBadRequest)
 	}
-	base, ext, found := strings.Cut(name, ".")
-	if !found {
-		fail(w, "invalid filename", http.StatusBadRequest)
-	}
-	// FIXME: alpine has: <MAC_ADDRESS>.apkovl.tar.gz
-	if !MAC_PATTERN.MatchString(base) {
-		fail(w, "invalid filename", http.StatusBadRequest)
-	}
-	switch ext {
-	case "ipxe", "conf", "initrd", "tgz":
+	log.Printf("name=%s\n", name)
+	switch {
+	case IPXE_PATTERN.MatchString(name):
+	case KERNEL_PATTERN.MatchString(name):
+	case INITRD_PATTERN.MatchString(name):
+	case RESPONSE_PATTERN.MatchString(name):
+	case TARBALL_PATTERN.MatchString(name):
+	case ALPINE_PATTERN.MatchString(name):
 	default:
-		fail(w, fmt.Sprintf("unexpected extension: %s", ext), 404)
+		fail(w, fmt.Sprintf("unexpected file request: %s", r.URL.Path), 404)
 	}
 	http.ServeFile(w, r, filepath.Join(c.dir, name))
 }
@@ -273,7 +272,7 @@ func (c *HostCache) UploadPackageHandler(w http.ResponseWriter, r *http.Request)
 
 	packageFilename := fileHeader.Filename
 
-	if !PKG_PATTERN.MatchString(packageFilename) {
+	if !TARBALL_PATTERN.MatchString(packageFilename) {
 		fail(w, fmt.Sprintf("illegal filename: %s", packageFilename), http.StatusBadRequest)
 		return
 	}

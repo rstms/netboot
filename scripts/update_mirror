@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 set -ueo pipefail
 
@@ -40,8 +40,14 @@ alpine_url() {
     printf "https://%s/%s/%s" ${alpine_mirror} $(alpine_dir) $(alpine_file)
 }
 
+replace_openbsd_installers() {
+    for file in $(find $htdocs/openbsd -type f); do
+	echo mv $file $htdocs/pub/OpenBSD/${openbsd_version}/${openbsd_arch}
+    done
+}
+
 case $os in 
-    openbsd) ( cd $htdocs; wget --no-clobber --no-host-directories --no-parent -r $(openbsd_url); );;
+    openbsd) ( replace_installers; cd $htdocs; wget --no-clobber --no-host-directories --no-parent -r $(openbsd_url); );;
     debian) ( cd $htdocs; wget --no-clobber --no-host-directories --no-parent -r $(debian_url); );;
     alpine) ( mkdir -p $htdocs/$(alpine_dir); cd $htdocs/$(alpine_dir); wget --no-clobber $(alpine_url); );;
 esac
