@@ -12,6 +12,9 @@ import (
 
 var TEMPLATE_PATTERN = regexp.MustCompile(`.*(\{\{[a-zA-Z_]+\}\}).*`)
 
+//go:embed certs
+var Certs embed.FS
+
 //go:embed alpine
 var Alpine embed.FS
 

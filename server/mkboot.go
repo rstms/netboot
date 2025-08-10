@@ -20,10 +20,11 @@ type MkBoot struct {
 	Response          string
 	DiskLabelTemplate string
 	URL               string
+	ExternalCPIO	  bool
 }
 
 func NewMkBoot(config *Config, dir, tarball, response, diskLabelTemplate, url string) *MkBoot {
-	m := MkBoot{config, dir, tarball, response, diskLabelTemplate, url}
+	m := MkBoot{config, dir, tarball, response, diskLabelTemplate, url, true}
 	return &m
 }
 
@@ -87,63 +88,93 @@ func (m *MkBoot) mkbootDebian() error {
 		"initrd.gz",
 	)
 
-	tempDir, err := os.MkdirTemp("", "initrd*")
-	if err != nil {
-		return Fatal(err)
-	}
-
-	err = copyFileFS(tempDir, "initrd.gz", template.Debian, srcFilename)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	initrdName, err := UnzipFile(filepath.Join(tempDir, "initrd.gz"))
-	if err != nil {
-		return Fatal(err)
-	}
-
-	err = copyFile(filepath.Join(tempDir, "preseed.cfg"), m.Response)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	err = copyFile(filepath.Join(tempDir, "package.tgz"), m.Tarball)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	newInitrdName := initrdName + ".new"
-	addFiles := []string{
-		filepath.Join(tempDir, "preseed.cfg"),
-		filepath.Join(tempDir, "package.tgz"),
-	}
-	err = GenerateInitrd(newInitrdName, initrdName, addFiles)
-	if err != nil {
-		return Fatal(err)
-	}
-
 	/*
-		err = run("preseed.cfg\npackage.tgz\n", tempDir, "cpio", "-H", "sv4cpio", "-o", "-A", "-F", "initrd")
+	err := copyFileFS(m.Dir, m.Config.Address+".initrd.gz", template.Debian, srcFilename)
+	if err != nil {
+		return Fatal(err)
+	}
+	*/
+
+		tempDir, err := os.MkdirTemp("", "initrd*")
 		if err != nil {
 			return Fatal(err)
 		}
-	*/
-	err = os.Rename(newInitrdName, initrdName)
-	if err != nil {
-		return Fatal(err)
-	}
 
-	initrdName, err = ZipFile(initrdName)
-	if err != nil {
-		return Fatal(err)
-	}
+		err = copyFileFS(tempDir, "initrd.gz", template.Debian, srcFilename)
+		if err != nil {
+			return Fatal(err)
+		}
 
-	dstFile := filepath.Join(m.Dir, m.Config.Address+".initrd.gz")
+		tempCertsDir := filepath.Join(tempDir, "etc", "ssl", "certs")
+		err = os.MkdirAll(tempCertsDir, 0755)
+		if err != nil {
+			return Fatal(err)
+		}
 
-	err = copyFile(dstFile, initrdName)
-	if err != nil {
-		return Fatal(err)
-	}
+		err = copyFileFS(tempCertsDir, "kemaster.crt", template.Certs, "keymaster.pem")
+		if err != nil {
+			return Fatal(err)
+		}
+
+		initrdName, err := UnzipFile(filepath.Join(tempDir, "initrd.gz"))
+		if err != nil {
+			return Fatal(err)
+		}
+
+		err = copyFile(filepath.Join(tempDir, "preseed.cfg"), m.Response)
+		if err != nil {
+			return Fatal(err)
+		}
+
+		err = copyFile(filepath.Join(tempDir, "package.tgz"), m.Tarball)
+		if err != nil {
+			return Fatal(err)
+		}
+
+		err = copyFile(filepath.Join(tempDir, "package.tgz"), m.Tarball)
+		if err != nil {
+			return Fatal(err)
+		}
+
+
+		if m.ExternalCPIO {
+		    addFiles := []string{
+			filepath.Join("etc", "ssl", "certs", "keymaster.crt"),
+			"preseed.cfg",
+			"package.tgz",
+		    }
+		    err = run(strings.Join(addFiles, "\n"), tempDir, "cpio", "-H", "sv4cpio", "-o", "-A", "-F", "initrd")
+		    if err != nil {
+			return Fatal(err)
+		    }
+		} else {
+
+		newInitrdName := initrdName + ".new"
+		addFiles := []string{
+			filepath.Join(tempDir, "preseed.cfg"),
+			filepath.Join(tempDir, "package.tgz"),
+			filepath.Join(tempDir, "etc", "ssl", "certs", "keymaster.crt"),
+		}
+		err = GenerateInitrd(newInitrdName, initrdName, addFiles)
+		if err != nil {
+			return Fatal(err)
+		}
+		err = os.Rename(newInitrdName, initrdName)
+		if err != nil {
+			return Fatal(err)
+		}
+		initrdName, err = ZipFile(initrdName)
+		if err != nil {
+			return Fatal(err)
+		}
+		}
+
+		dstFile := filepath.Join(m.Dir, m.Config.Address+".initrd.gz")
+
+		err = copyFile(dstFile, initrdName)
+		if err != nil {
+			return Fatal(err)
+		}
 
 	return nil
 }

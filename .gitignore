@@ -10,6 +10,7 @@ template/pub
 template/ipxe
 template/netboot
 template/openbsd
+template/certs
 bootimg/testdata/*
 bootiso/testdata/*
 server/testdata/*

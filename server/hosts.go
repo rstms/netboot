@@ -192,18 +192,18 @@ func copyFile(dstPath, srcPath string) error {
 }
 
 func fail(w http.ResponseWriter, message string, status int) {
-	log.Printf("  [%d] %s", status, message)
+	log.Printf("Fail:  [%d] %s", status, message)
 	http.Error(w, message, status)
 }
 
 func respond(w http.ResponseWriter, response any) {
-	log.Printf("  [200] %v", response)
+	log.Printf("Response:  [200] %v", response)
 
 	json.NewEncoder(w).Encode(response)
 }
 
-func (c *HostCache) DefaultHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("DefaultHandler: %s %s\n", r.Method, r.URL)
+func (c *HostCache) RootHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("RootHandler: %s %s\n", r.Method, r.URL)
 	fail(w, "unknown", 404)
 }
 
@@ -238,7 +238,7 @@ func (c *HostCache) IPXEHandler(w http.ResponseWriter, r *http.Request) {
 	switch ext {
 	case "ipxe", "conf", "initrd", "tgz":
 	default:
-		fail(w, "unknown", 404)
+		fail(w, fmt.Sprintf("unexpected extension: %s", ext), 404)
 	}
 	http.ServeFile(w, r, filepath.Join(c.dir, name))
 }
