@@ -11,9 +11,7 @@ rstms_modules = $(shell awk <go.mod '/^module/{next} /rstms/{print $$1}')
 
 gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(info git status is clean))
 
-template_files = \
-  template/ipxe/BOOTX64.EFI \
-  template/ipxe/autoexec.ipxe
+template_files = template/certs/keymaster.pem 
 
 $(program): build
 
@@ -72,8 +70,5 @@ sterile: clean
 	go clean -modcache
 	rm -f go.mod go.sum
 
-template/ipxe/BOOTX64.EFI: template/ipxe/netboot.xyz.efi
-	cp $< $@
-
-template/ipxe/autoexec.ipxe: template/ipxe/menu.ipxe
+template/certs/keymaster.pem: /etc/ssl/keymaster.pem
 	cp $< $@

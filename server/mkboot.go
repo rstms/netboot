@@ -28,6 +28,7 @@ func NewMkBoot(config *Config, dir, tarball, response, diskLabelTemplate, url st
 	return &m
 }
 
+// prepare OS-specific boot files in the cache directory named with MAC address
 func (m *MkBoot) Generate() error {
 	fmt.Printf("Generate: %s\n", FormatJSON(m))
 	switch strings.ToLower(m.Config.OS) {
@@ -87,69 +88,12 @@ func (m *MkBoot) mkbootDebian() error {
 		m.Config.Arch,
 	)
 
-	tempDir, err := os.MkdirTemp("", "initrd*")
+	err := copyFileFS(m.Dir, m.Config.Address+".kernel", template.Debian, filepath.Join(distDir, "linux"))
 	if err != nil {
 		return Fatal(err)
 	}
 
-	err = copyFileFS(m.Dir, m.Config.Address+".kernel", template.Debian, filepath.Join(distDir, "linux"))
-	if err != nil {
-		return Fatal(err)
-	}
-
-	err = copyFileFS(tempDir, "initrd.gz", template.Debian, filepath.Join(distDir, "initrd.gz.keymaster"))
-	if err != nil {
-		return Fatal(err)
-	}
-
-	initrdName, err := UnzipFile(filepath.Join(tempDir, "initrd.gz"))
-	if err != nil {
-		return Fatal(err)
-	}
-
-	err = copyFile(filepath.Join(tempDir, "preseed.cfg"), m.Response)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	err = copyFile(filepath.Join(tempDir, "package.tgz"), m.Tarball)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	if m.ExternalCPIO {
-		addFiles := []string{
-			"package.tgz",
-		}
-		err = run(strings.Join(addFiles, "\n"), tempDir, "cpio", "-H", "sv4cpio", "-o", "-A", "-F", "initrd")
-		if err != nil {
-			return Fatal(err)
-		}
-	} else {
-
-		newInitrdName := initrdName + ".new"
-		addFiles := []string{
-			filepath.Join(tempDir, "preseed.cfg"),
-			filepath.Join(tempDir, "package.tgz"),
-			filepath.Join(tempDir, "etc", "ssl", "certs", "keymaster.crt"),
-		}
-		err = GenerateInitrd(newInitrdName, initrdName, addFiles)
-		if err != nil {
-			return Fatal(err)
-		}
-		err = os.Rename(newInitrdName, initrdName)
-		if err != nil {
-			return Fatal(err)
-		}
-		initrdName, err = ZipFile(initrdName)
-		if err != nil {
-			return Fatal(err)
-		}
-	}
-
-	dstFile := filepath.Join(m.Dir, m.Config.Address+".initrd")
-
-	err = copyFile(dstFile, initrdName)
+	err = copyFileFS(m.Dir, m.Config.Address+".initrd", template.Debian, filepath.Join(distDir, "initrd.gz.keymaster"))
 	if err != nil {
 		return Fatal(err)
 	}
@@ -174,69 +118,3 @@ func copyFileFS(tempDir, dstName string, srcFS fs.FS, srcName string) error {
 	}
 	return nil
 }
-
-func run(stdin, tempDir, command string, args ...string) error {
-
-	cmd := exec.Command(command, args...)
-	cmd.Dir = tempDir
-	if stdin != "" {
-		cmd.Stdin = bytes.NewBuffer([]byte(stdin))
-	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err != nil {
-		return Fatal(err)
-	}
-	return nil
-}
-
-/*
-#!/bin/sh
-#
-set -ue
-
-mac=$1
-arch=amd64
-codename=bookworm
-webroot=/var/www/htdocs/debian
-netboot=/var/www/netboot
-tempdir=$(mktemp -d)
-target=${netboot}/${mac}.initrd
-
-fail() {
-  echo >&2 $0 "$@"
-  exit 1
-}
-
-cleanup() {
-  if [ -n "$tempdir" ]; then
-    if [ -e "$tempdir" ]; then
-       rm -rf $tempdir
-    fi
-  fi
-}
-trap cleanup EXIT
-
-[ -n "$mac" ] || fail no MAC
-
-cd $tempdir
-
-get_file() {
-  cp $1 $2
-  chown 0:0 $2
-  chmod 0600 $2
-}
-
-get_file ${netboot}/${mac}.conf preseed.cfg
-get_file ${netboot}/${mac}.tgz package.tgz
-get_file ${webroot}/dists/${codename}/main/installer-${arch}/current/images/netboot/debian-installer/${arch}/initrd.gz initrd.gz
-gunzip initrd.gz
-echo "preseed.cfg" | cpio -H sv4cpio -o -A -F initrd
-echo "package.tgz" | cpio -H sv4cpio -o -A -F initrd
-gzip initrd
-mv initrd.gz ${target}
-
-/root/nbdperm
-ls -l ${netboot}/${mac}*
-*/

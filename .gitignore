@@ -7,7 +7,6 @@ cruft
 template/debian
 template/alpine
 template/pub
-template/ipxe
 template/netboot
 template/openbsd
 template/certs

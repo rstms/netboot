@@ -129,21 +129,25 @@ func (c *HostCache) copyTemplateFile(fs embed.FS, dstPath, srcPath string) error
 	return nil
 }
 
-func (c *HostCache) copyIPXETemplate(dstFile, srcFile, url string, config *Config) error {
+func (c *HostCache) copyIPXETemplate(dstFilename, srcFilename, url string, config *Config) error {
 
-	log.Printf("copyIPXETemplate(%s, %s, %s, <config>)\n", dstFile, srcFile, url)
+	log.Printf("copyIPXETemplate(%s, %s, %s, <config>)\n", dstFilename, srcFilename, url)
 
-	src, err := template.Ipxe.Open(filepath.Join("ipxe", srcFile))
+	src, err := template.Ipxe.Open(filepath.Join("ipxe", srcFilename))
 	if err != nil {
 		return err
 	}
 	defer src.Close()
 
-	dst, err := os.Create(dstFile)
+	dst, err := os.Create(dstFilename)
 	if err != nil {
 		return err
 	}
 	defer dst.Close()
+
+	// These string replacements are applied to multiple classes of IPXE file
+	// the prefixes are unique so far, but make sure we don't duplicate any
+	// IPXE files are generated using https://github.com/rstms/rstms-netboot-xyz
 
 	scanner := bufio.NewScanner(src)
 	for scanner.Scan() {
@@ -527,14 +531,14 @@ func (c *HostCache) GenerateISO(url, isoDir, isoFile string, config *Config) err
 
 	// copy and customize the template autoexec.ipxe to the isoDir
 	autoexec := filepath.Join(isoDir, "autoexec.ipxe")
-	err := c.copyIPXETemplate(autoexec, "autoexec.ipxe", url, config)
+	err := c.copyIPXETemplate(autoexec, "menu.ipxe", url, config)
 	if err != nil {
 		return err
 	}
 	//defer os.Remove(autoexec)
 
 	efiBin := filepath.Join(isoDir, "BOOTX64.EFI")
-	err = c.copyTemplateFile(template.Ipxe, efiBin, filepath.Join("ipxe", "BOOTX64.EFI"))
+	err = c.copyTemplateFile(template.Ipxe, efiBin, filepath.Join("ipxe", "netboot.xyx.efi"))
 	if err != nil {
 		return err
 	}
