@@ -12,8 +12,10 @@ import (
 
 var TEMPLATE_PATTERN = regexp.MustCompile(`.*(\{\{[a-zA-Z_]+\}\}).*`)
 
+/*
 //go:embed certs
 var Certs embed.FS
+*/
 
 //go:embed alpine
 var Alpine embed.FS
@@ -26,9 +28,6 @@ var OpenBSD embed.FS
 
 //go:embed ipxe
 var Ipxe embed.FS
-
-// go: embed autoexec/autoexec.ipxe
-var AutoexecTemplate []byte
 
 func expandLine(match []string, macros map[string]string) (string, error) {
 	if len(match) < 2 {
