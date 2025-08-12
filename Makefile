@@ -48,10 +48,7 @@ update:
 	$(foreach module,$(rstms_modules),go get $(module)@latest;)
 
 mirrors:
-	scripts/update_mirrors
-	find template -type d -exec chmod 0755 \{\} \;
-	find template -type f -exec chmod 0644 \{\} \;
-	find template/pub/OpenBSD -type f -name install??.??? -exec mv \{\} template/openbsd \;
+	cd template && gmake -j 7 
 	scripts/update_debian_initrd
 
 clean:
@@ -72,3 +69,7 @@ sterile: clean
 
 template/certs/keymaster.pem: /etc/ssl/keymaster.pem
 	cp $< $@
+
+test-openbsd-mkboot:
+	scripts/test_openbsd_mkboot
+

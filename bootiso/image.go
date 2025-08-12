@@ -169,6 +169,8 @@ func fileSize(label, filename string) (int64, error) {
 
 func CreateNetbootISOImage(dstImage, srcImage, efiImage, autoexec string) error {
 
+	log.Printf("CreateNetbootIsoImage: dst=%s src=%s efi=%s autoexec=%s\n", dstImage, srcImage, efiImage, autoexec)
+
 	autoexecSize, err := fileSize("autoexec", autoexec)
 	if err != nil {
 		return err
@@ -179,7 +181,7 @@ func CreateNetbootISOImage(dstImage, srcImage, efiImage, autoexec string) error 
 	log.Printf("srcImageName: %s\n", srcImageName)
 	log.Printf("srcImageSize: %d\n", srcImageSize)
 
-	tmpDir, err := os.MkdirTemp("", "isobuild*")
+	tmpDir, err := os.MkdirTemp("", "netboot_isobuild_*")
 	if err != nil {
 		return err
 	}

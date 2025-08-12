@@ -26,7 +26,7 @@ key=/etc/ssl/${name}.pem
 
 workdir=template/certs/debian
 certsdir=$workdir/etc/ssl/certs
-distdir=template/debian
+distdir=template/dist/debian
 initdir=template/certs
 rm -rf $workdir
 rm -rf $initdir/initrd*

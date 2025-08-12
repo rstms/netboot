@@ -1,0 +1,76 @@
+#!/bin/ksh
+
+ehandler() {
+    echo "site package install failed. rebooting..."
+    sleep 10
+    reboot
+}
+trap ehandler EXIT
+    
+set -e
+
+install_site_package() {
+    local _mac
+    local _url
+    local _gdl
+    . /netboot.env
+    _gdl='/usr/local/bin/gdl -ca /etc/ssl/keymaster.pem -cert /etc/ssl/netboot.pem -key /etc/ssl/netboot.key'
+    if [ -x /mnt/usr/local/bin/gdl ]; then
+	echo "Using existing gdl:"
+	ls -l /mnt/usr/local/bin/gdl
+    else 
+	echo "Downloading ${_url}/gdl.tgz..."
+	cd /mnt/usr/local/bin
+	ftp ${_url}/gdl.tgz
+	tar zxf gdl.tgz bin/gdl
+	mv bin/gdl .
+	rm -rf bin
+	chmod 0755 gdl
+	rm gdl.tgz
+    fi
+    cd /
+    cp /etc/ssl/keymaster.pem /mnt/etc/ssl
+    cp /etc/ssl/netboot.pem /mnt/etc/ssl
+    cp /etc/ssl/netboot.key /mnt/etc/ssl
+    chmod 0444 /mnt/etc/ssl/*.pem
+    chmod 0400 /mnt/etc/ssl/netboot.key
+    echo "Downloading ${_url}/${_mac}.tgz..."
+    chroot /mnt ${_gdl} ${_url}/ipxe/${_mac}.tgz
+    echo "Installing site package ${_mac}.tgz..."
+    chroot /mnt tar xzvphf /${_mac}.tgz
+    chmod 0755 /mnt
+    rm -f /mnt/${_mac}.tgz
+    mkdir /mnt/root/.netboot
+    chmod 0700 /mnt/root/.netboot
+    if [ -x /mnt/postinstall ]; then
+	echo "Running postinstall..."
+        cp /mnt/postinstall /mnt/root/.netboot/postinstall
+	chroot /mnt sh -c '/postinstall 2>/root/.netboot/postinstall.stderr | tee /root/.netboot/postinstall.stdout'
+	echo $? >/mnt/root/.netboot/postinstall.exitcode
+    fi
+    rm -f /mnt/postinstall
+    if [ -x /mnt/install.site ]; then
+	echo "Running install.site..."
+        cp /mnt/install.site /mnt/root/.netboot/install.site
+	chroot /mnt sh -c '/install.site 2>/root/.netboot/install.site.stderr | tee /root/.netboot/install.site.stdout'
+	echo $? >/mnt/root/.netboot/install.site.exitcode
+    fi
+    rm -f /mnt/install.site
+
+    if [ -x /mnt/install.image ]; then
+	echo "Running install.image..."
+	cp /mnt/install.image /mnt/root/.netboot/install.image
+	chroot /mnt sh -c '/install.image 2>/root/.netboot/install.image.stderr | tee /root/.netboot/install.image.stdout'
+	echo $? > /mnt/root/.netboot/install.image.exitcode
+    fi
+    rm -f /mnt/install.image
+
+    echo "${_gdl} ${_url}/api/booted/${_mac} /dev/null" >>/mnt/etc/rc.firsttime
+    echo "rm -f /etc/ssl/netboot.pem" >>/mnt/etc/rc.firsttime
+    echo "rm -f /etc/ssl/netboot.key" >>/mnt/etc/rc.firsttime
+    cp /mnt/etc/rc.firsttime /mnt/root/.netboot/rc.firsttime
+}
+
+install_site_package
+
+trap - EXIT

@@ -1,8 +1,9 @@
 #!ipxe
 
 # OpenBSD MAC autoconfig netboot
+set netboot http://netboot.rstms.net
 
 imgfree
-sanboot https://localboot.rstms.net/pub/OpenBSD/7.5/amd64/netboot75.img
+sanboot ${netboot}/ipxe/${net0/mac}.iso
 
 exit 0

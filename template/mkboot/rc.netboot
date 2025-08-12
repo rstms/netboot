@@ -1,0 +1,107 @@
+#!/bin/ksh
+
+FUNCS_ONLY=1
+. /autoinstall
+
+ehandler() {
+    echo "netboot configuration failed. rebooting..."
+    sleep 10
+    reboot
+}
+trap ehandler EXIT
+    
+set -e
+set -x
+
+netboot_update_image() {
+
+    echo "Updating preinstalled image..."
+    mkdir -p /mnt
+    mount /dev/${_disk}a /mnt
+    chroot /mnt /bin/sh -c "mount -a"
+    /rc.package
+    echo "Update complete."
+}
+
+configure_netboot() {
+    local _nbif _mac _disk _iter _url
+
+    . /netboot.env
+
+    _nbif=$(get_ifs)
+    if [ -n "$_nbif" ]; then
+        echo "netboot interface: $_nbif"
+        ifconfig $_nbif group netboot
+    else
+        echo "interface not detected"
+        exit 1
+    fi
+  
+    if [[ -x /sbin/dhcpleased ]]; then
+        echo dhcpleased is present and executable
+    else
+        echo dhcpleased is not executable!
+        exit 1
+    fi
+
+    ifconfig $_nbif inet autoconf up
+  
+    if ! wait_for_dhcp_info $_nbif 30; then
+        echo "DHCP config timeout on interface $_nbif"
+        exit 1
+    fi
+
+    echo "Setting clock from ${_url}/utc..."
+    _iter=0
+    while [ $_iter -lt 10 ]; do
+	_iter=$(( $_iter + 1 ))
+	if ftp -S noverifytime ${_url}/utc; then
+	    break
+	else
+	    echo retrying...
+	    sleep 1
+	fi
+    done
+    date -f '%s' $(cat utc)
+
+    echo "Disknames: '$(sysctl hw.disknames)' "
+    _disk=$(sysctl hw.disknames | sed -n 's/.*[,=]\([^cr]d0\):.*/\1/p;q')
+    echo "Using disk '$_disk'"
+    
+    cd /dev
+    . ./MAKEDEV $_disk
+    cd /
+
+    if [ -e /install.image ]; then
+        netboot_update_image
+	trap - EXIT
+	reboot
+    fi
+
+    dd if=/dev/zero of=/dev/${_disk}c count=128
+    disklabel -Aw $_disk
+    newfs /dev/r${_disk}a
+    mkdir -p /usr/local
+    mount /dev/${_disk}a /usr/local
+    
+    cd /usr/local
+    ftp ${_url}/${_gdl_path}
+    tar zxf gdl??.tgz
+    chmod 0755 bin/*
+    bin/install_gdl
+    cd /
+
+    /usr/local/bin/gdl -ca /etc/ssl/keymaster.pem -cert /etc/ssl/netboot.pem -key /etc/ssl/netboot.key ${_url}/ipxe/${_mac}.conf
+    mv ${_mac}.conf auto_install.conf
+
+    umount /usr/local
+    dd if=/dev/zero of=/dev/${_disk}c count=128
+    
+    ifconfig $_nbif inet -autoconf delete down 2>/dev/null || true
+    rm -f /var/db/dhcpleased/$_nbif || true
+}
+
+configure_netboot
+
+# disable reboot on error
+trap - EXIT

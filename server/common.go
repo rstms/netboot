@@ -23,3 +23,7 @@ func Fatal(err error) error {
 func Fatalf(format string, args ...interface{}) error {
 	return common.Fatalf(format, args...)
 }
+
+func Warning(format string, args ...interface{}) {
+	common.Warning(format, args...)
+}

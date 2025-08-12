@@ -5,7 +5,6 @@ isset ${arch} && goto skip_arch_detect ||
 cpuid --ext 29 && set arch x86_64 || set arch i386
 iseq ${buildarch} arm64 && set arch arm64 ||
 :skip_arch_detect
-ntp pool.ntp.org ||
 iseq ${cls} serial && goto ignore_cls ||
 set cls:hex 1b:5b:4a  # ANSI clear screen sequence - "^[[J"
 set cls ${cls:string}
@@ -13,9 +12,15 @@ set cls ${cls:string}
 
 #console --x 1024 --y 768
 #console --picture http://boot.ipxe.org/ipxe.png
-echo templates/menu/menu.ipxe.j2
 
-dhcp || echo "dhcp failed"
+dhcp && goto dhcp_ok ||
+echo DHCP network configuration failed
+goto error
+:dhcp_ok
+
+ntp && goto ntp_ok ||
+echo "failed setting time from NTP server"
+:ntp_ok
 
 :main_menu
 clear main_menu_choice
@@ -23,10 +28,10 @@ echo ${cls}
 menu Reliance Systems Netboot Menu
 item --gap Default:
 item mac_autoinstall MAC Address Autoinstall
-item local Boot from local hdd
+item local Boot from local disk
 item --gap Tools:
 item shell iPXE shell
-choose --timeout 5000 --default mac_autoinstall main_menu_choice || goto local
+choose --timeout 1000 --default mac_autoinstall main_menu_choice || goto local
 echo ${cls}
 goto ${main_menu_choice}
 goto main_menu

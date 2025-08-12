@@ -148,7 +148,8 @@ func (s *Server) Start() error {
 
 	//netbootFS := os.DirFS(s.NetbootDir)
 	http.HandleFunc("GET /", s.hosts.RootHandler)
-	http.HandleFunc("GET /iso/netboot.iso", s.hosts.NetbootISOHandler)
+	http.HandleFunc("GET /utc", s.hosts.UTCHandler)
+	http.HandleFunc("GET /dist/openbsd/{version}/{arch}/{file}", s.hosts.GDLHandler)
 	http.HandleFunc("GET /ipxe/", s.hosts.IPXEHandler)
 	http.HandleFunc("GET /debian/", s.hosts.DebianHandler)
 	http.HandleFunc("GET /pub/OpenBSD/", s.hosts.OpenBSDHandler)

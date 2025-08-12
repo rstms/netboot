@@ -12,19 +12,14 @@ import (
 
 var TEMPLATE_PATTERN = regexp.MustCompile(`.*(\{\{[a-zA-Z_]+\}\}).*`)
 
-/*
 //go:embed certs
 var Certs embed.FS
-*/
 
-//go:embed alpine
-var Alpine embed.FS
+//go:embed dist
+var Dist embed.FS
 
-//go:embed debian
-var Debian embed.FS
-
-//go:embed pub
-var OpenBSD embed.FS
+//go:embed mkboot
+var Mkboot embed.FS
 
 //go:embed ipxe
 var Ipxe embed.FS

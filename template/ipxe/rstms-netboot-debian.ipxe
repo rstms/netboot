@@ -5,6 +5,7 @@
 set debian_mirror https://localboot.rstms.net
 set netboot https://localboot.rstms.net
 set debian_version bookworm
+set kernel_params
 
 set bootfile ${netboot}/ipxe/${net0/mac}
 
@@ -14,7 +15,7 @@ set preseed preseed/url=${bootfile}.conf
 set mirrorcfg mirror/suite=${debian_version}
 
 imgfree
-kernel ${bootfile}.kernel ${netcfg} ${install_params} ${mirrorcfg} ${preseed}
+kernel ${bootfile}.kernel ${netcfg} ${install_params} ${mirrorcfg} ${preseed} ${kernel_params}
 initrd ${bootfile}.initrd
 boot
 

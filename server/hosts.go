@@ -2,13 +2,13 @@ package server
 
 import (
 	"bufio"
-	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/rstms/netboot/bootimg"
 	"github.com/rstms/netboot/bootiso"
 	"github.com/rstms/netboot/template"
+	"github.com/spf13/viper"
 	"io"
 	"io/ioutil"
 	"log"
@@ -18,7 +18,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
+
+const DEFAULT_DEBIAN_MIRROR = "http://ftp.us.debian.org"
+const DEFAULT_OPENBSD_MIRROR = "https://mirrors.mit.edu"
+const DEFAULT_ALPINE_MIRROR = "https://dl-cdn.alpinelinux.org"
 
 type Config struct {
 	Address           string `json:"address"`
@@ -28,6 +33,7 @@ type Config struct {
 	Serial            string `json:"serial"`
 	Config            string `json:"config"`
 	DisklabelTemplate string `json:"disklabel_template"`
+	KernelParams      string `json:"kernel_params"`
 }
 
 type Host struct {
@@ -58,80 +64,55 @@ type DeleteResponse struct {
 	Files   []string `json:"files"`
 }
 
-var MAC_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})$`)
-var IPXE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})\.ipxe$`)
-var KERNEL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2}).kernel$`)
-var INITRD_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2}).initrd$`)
-var RESPONSE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2}).conf$`)
-var ALPINE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2}).apkvol.tar.gz$`)
-var TARBALL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})\.tgz$`)
+var MAC_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`)
+var IPXE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\.ipxe$`)
+var TARBALL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\.tgz$`)
+
+/*
+var ISO_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\.iso$`)
+var KERNEL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}).kernel$`)
+var INITRD_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[-:]){5}([0-9A-Fa-f]{2}).initrd$`)
+var RESPONSE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}).conf$`)
+var ALPINE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}).apkvol.tar.gz$`)
+var TEMPLATE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\.disklabel_template$`)
+*/
 
 type HostCache struct {
-	dir   string
-	cache map[string]string
+	dir     string
+	ipxeDir string
+	distDir string
+	cache   map[string]string
 }
 
 func NewHostCache(dir string) (*HostCache, error) {
+
+	viper.SetDefault("netboot.mirror.alpine", DEFAULT_ALPINE_MIRROR)
+	viper.SetDefault("netboot.mirror.debian", DEFAULT_DEBIAN_MIRROR)
+	viper.SetDefault("netboot.mirror.openbsd", DEFAULT_OPENBSD_MIRROR)
+
 	c := HostCache{
-		cache: make(map[string]string),
-		dir:   dir,
+		cache:   make(map[string]string),
+		ipxeDir: filepath.Join(dir, "ipxe"),
+		distDir: filepath.Join(dir, "dist"),
 	}
-	if !IsDir(dir) {
-		err := os.Mkdir(dir, 0700)
+	if !IsDir(c.ipxeDir) {
+		err := os.MkdirAll(c.ipxeDir, 0700)
 		if err != nil {
-			return nil, err
+			return nil, Fatal(err)
 		}
 	}
-	/*
-		// copy template files to cache
-		err := c.updateCache(template.Netboot, "netboot")
+	if !IsDir(c.distDir) {
+		err := os.MkdirAll(c.distDir, 0700)
 		if err != nil {
-			return nil, err
+			return nil, Fatal(err)
 		}
-	*/
+	}
 	return &c, nil
 }
 
-func (c *HostCache) updateCache(fs embed.FS, templateDir string) error {
-	files, err := fs.ReadDir(templateDir)
-	if err != nil {
-		return err
-	}
-	for _, file := range files {
-		fmt.Printf("file: %v\n", file)
-		srcPath := filepath.Join(templateDir, file.Name())
-		dstPath := filepath.Join(c.dir, file.Name())
-		if !IsFile(dstPath) {
-			err := c.copyTemplateFile(fs, dstPath, srcPath)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
+func (c *HostCache) expandIpxeFile(dstFilename, srcFilename, url string, config *Config) error {
 
-func (c *HostCache) copyTemplateFile(fs embed.FS, dstPath, srcPath string) error {
-	srcFile, err := fs.Open(srcPath)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-	dstFile, err := os.Create(dstPath)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-	_, err = io.Copy(dstFile, srcFile)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *HostCache) copyIPXETemplate(dstFilename, srcFilename, url string, config *Config) error {
-
-	log.Printf("copyIPXETemplate(%s, %s, %s, <config>)\n", dstFilename, srcFilename, url)
+	log.Printf("expandIpxeFile(%s, %s, %s, <config>)\n", dstFilename, srcFilename, url)
 
 	src, err := template.Ipxe.Open(filepath.Join("ipxe", srcFilename))
 	if err != nil {
@@ -157,16 +138,21 @@ func (c *HostCache) copyIPXETemplate(dstFilename, srcFilename, url string, confi
 		// FIXME: need an alpine case
 		case strings.HasPrefix(line, "chain --replace "):
 			_, err = fmt.Fprintf(dst, "chain --replace %s/ipxe/${net0/mac}.ipxe || error", url)
-		case strings.HasPrefix(line, "sanboot "):
-			// openbsd IPXE menu
-			versionTag := strings.ReplaceAll(config.Version, ".", "")
-			_, err = fmt.Fprintf(dst, "sanboot %s/pub/OpenBSD/%s/%s/netboot%s.img", url, config.Version, config.Arch, versionTag)
+		/*
+			case strings.HasPrefix(line, "sanboot "):
+				// openbsd IPXE menu
+				versionTag := strings.ReplaceAll(config.Version, ".", "")
+				_, err = fmt.Fprintf(dst, "sanboot %s/pub/OpenBSD/%s/%s/netboot%s.img", url, config.Version, config.Arch, versionTag)
+		*/
 		case strings.HasPrefix(line, "set debian_mirror "):
 			// debian IPXE menu
 			_, err = fmt.Fprintf(dst, "set debian_mirror %s\n", url)
 		case strings.HasPrefix(line, "set netboot "):
-			// debian IPXE menu
+			// debian, openbsd IPXE menu
 			_, err = fmt.Fprintf(dst, "set netboot %s\n", url)
+		case strings.HasPrefix(line, "set kernel_params "):
+			// debian IPXE menu
+			_, err = fmt.Fprintf(dst, "set kernel_params %s\n", config.KernelParams)
 		default:
 			_, err = dst.Write([]byte(line + "\n"))
 		}
@@ -181,85 +167,133 @@ func (c *HostCache) copyIPXETemplate(dstFilename, srcFilename, url string, confi
 	return nil
 }
 
-func copyFile(dstPath, srcPath string) error {
-	srcFile, err := os.Open(srcPath)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-	dstFile, err := os.Create(dstPath)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-	_, err = io.Copy(dstFile, srcFile)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func fail(w http.ResponseWriter, message string, status int) {
-	log.Printf("Fail:  [%d] %s", status, message)
+	log.Printf("Fail:  [%d] %s\n", status, message)
 	http.Error(w, message, status)
 }
 
 func respond(w http.ResponseWriter, response any) {
-	log.Printf("Response:  [200] %v", response)
+	log.Printf("Response:  [200] %v\n", response)
 
 	json.NewEncoder(w).Encode(response)
 }
 
 func (c *HostCache) RootHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("RootHandler: %s %s\n", r.Method, r.URL)
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
 	fail(w, "unknown", 404)
 }
 
-func (c *HostCache) NetbootISOHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("NetbootISOHandler: %s %s\n", r.Method, r.URL)
-	netbootURL := "https://" + r.Host
-	isoFile, err := c.IsoFile(netbootURL, nil)
-	if err != nil {
-		fail(w, "iso not found", 404)
+func (c *HostCache) UTCHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
+	epochTime := time.Now().Unix()
+	w.Header().Set("Content-Disposition", "attachment; filename=utc")
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, "%d\n", epochTime)
+	log.Printf("Response:  [200] %d\n", epochTime)
+}
+
+func (c *HostCache) GDLHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
+	version := r.PathValue("version")
+	arch := r.PathValue("arch")
+	file := r.PathValue("file")
+	if file != "gdl.tgz" {
+		Warning("invalid gdl filename: %s\n", r.URL.Path)
+		fail(w, "invalid path", http.StatusBadRequest)
+		return
 	}
-	http.ServeFile(w, r, isoFile)
-	return
+	parts := regexp.MustCompile(`^([0-9]+)\.([0-9]+)$`).FindStringSubmatch(version)
+	if len(parts) != 3 {
+		Warning("invalid gdl version: %s\n", r.URL.Path)
+		fail(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	major := parts[1]
+	minor := parts[2]
+	gdlPathname := filepath.Join("dist", "openbsd", version, arch, fmt.Sprintf("gdl%s%s.tgz", major, minor))
+	http.ServeFileFS(w, r, template.Dist, gdlPathname)
 }
 
 func (c *HostCache) IPXEHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("IPXEHandler: %s %s\n", r.Method, r.URL)
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
 	dir, name := path.Split(r.URL.Path)
 	if dir != "/ipxe/" {
 		fail(w, "invalid path", http.StatusBadRequest)
+		return
+
 	}
-	log.Printf("name=%s\n", name)
-	switch {
-	case IPXE_PATTERN.MatchString(name):
-	case KERNEL_PATTERN.MatchString(name):
-	case INITRD_PATTERN.MatchString(name):
-	case RESPONSE_PATTERN.MatchString(name):
-	case TARBALL_PATTERN.MatchString(name):
-	case ALPINE_PATTERN.MatchString(name):
+	base, ext, ok := strings.Cut(name, ".")
+	if !ok {
+		Warning("filename missing exension: %s\n", r.URL.Path)
+		fail(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	if !MAC_PATTERN.MatchString(base) {
+		Warning("filename not MAC address: %s\n", r.URL.Path)
+		fail(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	switch ext {
+	case "iso":
+	case "ipxe":
+	case "kernel":
+	case "initrd":
+	case "conf":
+	case "tgz":
+	case "disk":
+	case "apkvol.tar.gz":
 	default:
-		fail(w, fmt.Sprintf("unexpected file request: %s", r.URL.Path), 404)
+		Warning("unexpected extension: %s\n", r.URL.Path)
+		fail(w, fmt.Sprintf("invalid path"), http.StatusBadRequest)
+		return
 	}
-	http.ServeFile(w, r, filepath.Join(c.dir, name))
+	http.ServeFile(w, r, filepath.Join(c.dir, r.URL.Path))
+}
+
+func (c *HostCache) proxy(mirror, dir string, w http.ResponseWriter, r *http.Request) {
+
+	path := filepath.Join(c.distDir, dir)
+	filesystem, err := os.OpenRoot(path)
+	if err != nil {
+		Warning("%v\n", Fatal(err))
+		fail(w, "configuration error", http.StatusInternalServerError)
+		return
+	}
+	cacheFS := filesystem.FS()
+	if !IsFileFS(cacheFS, r.URL.Path) {
+		mirrorUrl := viper.GetString("netboot.mirror." + mirror)
+		if mirrorUrl == "" {
+			Warning("No mirror configured: %s", mirror)
+			fail(w, "no mirror configured", http.StatusNotImplemented)
+			return
+		}
+		err := downloadToFS(cacheFS, mirrorUrl, r.URL.Path)
+		if err != nil {
+			Warning("Download '%s' failed: %v\n", r.URL.Path, err)
+			fail(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 }
 
 func (c *HostCache) DebianHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("DebianHandler: %s %s\n", r.Method, r.URL)
-	http.ServeFileFS(w, r, template.Debian, r.URL.Path)
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
+	c.proxy("debian", "debian", w, r)
 }
 
 func (c *HostCache) OpenBSDHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("OpenBSDHandler: %s %s\n", r.Method, r.URL)
-	fail(w, "unknown", 404)
-	//http.ServeFileFS(w, r, template.Debian, r.URL.Path)
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
+	c.proxy("openbsd", "pub", w, r)
+}
+
+func (c *HostCache) AlpineHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
+	c.proxy("alpine", "alpine", w, r)
 }
 
 func (c *HostCache) UploadPackageHandler(w http.ResponseWriter, r *http.Request) {
-
-	fmt.Printf("UploadPackageHandler\n")
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
 
 	err := r.ParseMultipartForm(256 << 20) // limit file size to 256MB
 	if err != nil {
@@ -297,26 +331,26 @@ func (c *HostCache) UploadPackageHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (c *HostCache) AddHostHandler(w http.ResponseWriter, r *http.Request) {
-
-	fmt.Printf("AddHostHandler\n")
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
 	var olines []string
-	var in Config
-	err := json.NewDecoder(r.Body).Decode(&in)
+	var config Config
+	err := json.NewDecoder(r.Body).Decode(&config)
 	if err != nil {
 		fail(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	fmt.Printf("Config: %s\n", FormatJSON(in))
+	fmt.Printf("Config: %s\n", FormatJSON(config))
 
-	if !MAC_PATTERN.MatchString(in.Address) {
+	if !MAC_PATTERN.MatchString(config.Address) {
 		fail(w, "invalid MAC address", http.StatusBadRequest)
 		return
 	}
 
-	c.cache[in.Address] = ""
+	c.cache[config.Address] = ""
 
-	switch in.OS {
+	// FIXME: check that OS Version is supported
+	switch config.OS {
 	case "debian":
 	case "openbsd":
 	case "alpine":
@@ -325,73 +359,77 @@ func (c *HostCache) AddHostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	srcMenuFilename := "rstms-netboot-" + in.OS + ".ipxe"
-	hostMenuPathname := filepath.Join(c.dir, fmt.Sprintf("%s.ipxe", in.Address))
-	responsePathname := filepath.Join(c.dir, fmt.Sprintf("%s.conf", in.Address))
-	disklabelTemplatePathname := filepath.Join(c.dir, fmt.Sprintf("%s.disklabel_template", in.Address))
-	tarballPathname := filepath.Join(c.dir, fmt.Sprintf("%s.tgz", in.Address))
-
 	netbootURL := "https://" + r.Host
 
-	err = c.copyIPXETemplate(hostMenuPathname, srcMenuFilename, netbootURL, &in)
+	srcMenuFilename := "rstms-netboot-" + config.OS + ".ipxe"
+	hostMenuPathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.ipxe", config.Address))
+	fmt.Printf("hostMenuPathname: %s\n", hostMenuPathname)
+	err = c.expandIpxeFile(hostMenuPathname, srcMenuFilename, netbootURL, &config)
 	if err != nil {
 		fail(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	olines = append(olines, "generated IPXE menu")
 
-	decodedBytes, err := base64.StdEncoding.DecodeString(in.Config)
+	responsePathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.conf", config.Address))
+	fmt.Printf("responsePathname: %s\n", responsePathname)
+	decodedBytes, err := base64.StdEncoding.DecodeString(config.Config)
 	if err != nil {
 		fail(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
 	err = os.WriteFile(responsePathname, decodedBytes, 0660)
 	if err != nil {
 		fail(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	olines = append(olines, "generated response file")
 
-	if in.DisklabelTemplate != "" {
-		err = os.WriteFile(disklabelTemplatePathname, []byte(in.DisklabelTemplate+"\n"), 0660)
+	// disk partitioning template: MAC.disk
+	disklabelTemplatePathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.disk", config.Address))
+	fmt.Printf("disklabelTemplatePathname: %s\n", disklabelTemplatePathname)
+	if config.DisklabelTemplate != "" {
+		err = os.WriteFile(disklabelTemplatePathname, []byte(config.DisklabelTemplate+"\n"), 0660)
 		if err != nil {
 			fail(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		olines = append(olines, "generated disklabel template")
+		olines = append(olines, "generated disk partition template")
 	}
 
-	fmt.Printf("responsePathname: %s\n", responsePathname)
-	fmt.Printf("hostMenuPathname: %s\n", hostMenuPathname)
-	fmt.Printf("disklabelTemplatePathname: %s\n", disklabelTemplatePathname)
+	// tarball MAC.tgz
+	tarballPathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.tgz", config.Address))
 	fmt.Printf("tarballPathname: %s\n", tarballPathname)
-
-	mkboot := NewMkBoot(&in, c.dir, tarballPathname, responsePathname, disklabelTemplatePathname, netbootURL)
+	mkboot := NewMkBoot(&config, c.dir, tarballPathname, responsePathname, disklabelTemplatePathname, netbootURL)
 	err = mkboot.Generate()
 	if err != nil {
 		fail(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	olines = append(olines, "generated OS boot resources")
-	_, err = c.IsoFile(netbootURL, &in)
+	olines = append(olines, "generated package tarball")
+
+	isoFile, err := c.GenerateISO(netbootURL, &config)
 	if err != nil {
 		fail(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	olines = append(olines, "generated netboot ISO")
-	respond(w, AddResponse{Message: fmt.Sprintf("%s configured", in.Address), Output: olines})
+	_, isoName := filepath.Split(isoFile)
+	isoUrl := path.Join(netbootURL, "ipxe", isoName)
+	olines = append(olines, "iso: "+isoUrl)
+
+	respond(w, AddResponse{Message: fmt.Sprintf("%s configured", config.Address), Output: olines})
 }
 
 func (c *HostCache) deleteHostFiles(address string) ([]string, error) {
-
-	fmt.Printf("deleteHostFiles: %s\n", address)
-
+	fmt.Printf("deleteAddressFiles: %s\n", address)
 	deletedFiles := []string{}
-	files, err := ioutil.ReadDir(c.dir)
+	files, err := ioutil.ReadDir(c.ipxeDir)
 	if err != nil {
-		return []string{}, err
+		return []string{}, Fatal(err)
 	}
 	pattern, err := regexp.Compile(fmt.Sprintf("^%s.*$", strings.ToLower(address)))
 	if err != nil {
-		return []string{}, err
+		return []string{}, Fatal(err)
 	}
 
 	for _, file := range files {
@@ -399,7 +437,7 @@ func (c *HostCache) deleteHostFiles(address string) ([]string, error) {
 		if pattern.MatchString(strings.ToLower(filename)) {
 			err := os.Remove(filepath.Join(c.dir, filename))
 			if err != nil {
-				return []string{}, err
+				return []string{}, Fatal(err)
 			}
 			deletedFiles = append(deletedFiles, filename)
 		}
@@ -408,24 +446,24 @@ func (c *HostCache) deleteHostFiles(address string) ([]string, error) {
 }
 
 func (c *HostCache) DeleteHostHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("DeleteHostHandler")
-	var in Host
-	err := json.NewDecoder(r.Body).Decode(&in)
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
+	var request Host
+	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		fail(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if !MAC_PATTERN.MatchString(in.Address) {
+	if !MAC_PATTERN.MatchString(request.Address) {
 		fail(w, "invalid MAC address", http.StatusBadRequest)
 		return
 	}
-	c.cache[in.Address] = ""
-	c.deleteAddressFiles(in.Address, w)
+	c.cache[request.Address] = ""
+	c.deleteAddressFiles(request.Address, w)
 }
 
 func (c *HostCache) deleteAddressFiles(inAddress string, w http.ResponseWriter) {
-	fmt.Println("deleteAddressFiles")
+	fmt.Printf("deleteAddressFiles: %s\n", inAddress)
 	addresses, err := c.hostAddresses()
 	if err != nil {
 		fail(w, err.Error(), http.StatusBadRequest)
@@ -447,7 +485,7 @@ func (c *HostCache) deleteAddressFiles(inAddress string, w http.ResponseWriter) 
 }
 
 func (c *HostCache) HostBootedHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("HostBootedHandler")
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
 	segments := strings.Split(r.URL.Path, "/")
 	if len(segments) > 3 {
 		address := segments[3]
@@ -463,7 +501,7 @@ func (c *HostCache) HostBootedHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *HostCache) HostAddressQueryHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("HostAddressQueryHandler")
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
 	segments := strings.Split(r.URL.Path, "/")
 	if len(segments) > 3 {
 		address := segments[3]
@@ -490,7 +528,7 @@ func (c *HostCache) hostAddresses() ([]string, error) {
 }
 
 func (c *HostCache) ListHostsHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("ListHostsHandler")
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
 	addresses, err := c.hostAddresses()
 	if err != nil {
 		fail(w, err.Error(), http.StatusBadRequest)
@@ -500,70 +538,57 @@ func (c *HostCache) ListHostsHandler(w http.ResponseWriter, r *http.Request) {
 	respond(w, HostListResponse{Message: fmt.Sprintf("config count: %d", len(addresses)), Addresses: addresses})
 }
 
-// return the netboot.iso filename the url, generating the ISO if not present
-func (c *HostCache) IsoFile(url string, config *Config) (string, error) {
-	// ensure an ISO file exixts for the url
-	encoded := strings.ReplaceAll(strings.ReplaceAll(url, "/", "_"), ":", "_")
-	isoDir := filepath.Join(c.dir, "iso", encoded)
-	if !IsDir(isoDir) {
-		err := os.MkdirAll(isoDir, 0700)
-		if err != nil {
-			return "", err
-		}
-	}
-	isoFile := filepath.Join(isoDir, "netboot.iso")
-	if !IsFile(isoFile) {
-		if config == nil {
-			return "", fmt.Errorf("cannot generate ISO in GET endpoint")
-		}
-		err := c.GenerateISO(url, isoDir, isoFile, config)
-		if err != nil {
-			return "", err
-		}
-	}
-	return isoFile, nil
-}
-
 // Generate a url-customized netboot ISO
-func (c *HostCache) GenerateISO(url, isoDir, isoFile string, config *Config) error {
+func (c *HostCache) GenerateISO(url string, config *Config) (string, error) {
 
-	fmt.Printf("Generating netboot ISO for %s\n", url)
+	fmt.Printf("Generating netboot ISO for %s with URL %s\n", config.Address, url)
+
+	isoFile := filepath.Join(c.dir, fmt.Sprintf("%s.iso", strings.ReplaceAll(config.Address, ":", "-")))
+	if IsFile(isoFile) {
+		err := os.Remove(isoFile)
+		if err != nil {
+			return "", Fatal(err)
+		}
+	}
+
+	isoDir, err := os.MkdirTemp("", "netboot_iso_*")
+	if err != nil {
+		return "", Fatal(err)
+	}
+	// FIXME: delete temp dir
+	// defer os.RemoveAll(isoDir)
 
 	// copy and customize the template autoexec.ipxe to the isoDir
 	autoexec := filepath.Join(isoDir, "autoexec.ipxe")
-	err := c.copyIPXETemplate(autoexec, "menu.ipxe", url, config)
+	err = c.expandIpxeFile(autoexec, "menu.ipxe", url, config)
 	if err != nil {
-		return err
+		return "", Fatal(err)
 	}
-	//defer os.Remove(autoexec)
 
 	efiBin := filepath.Join(isoDir, "BOOTX64.EFI")
-	err = c.copyTemplateFile(template.Ipxe, efiBin, filepath.Join("ipxe", "netboot.xyz.efi"))
+	err = CopyFileFromFS(efiBin, filepath.Join("ipxe", "netboot.xyz.efi"), template.Ipxe)
 	if err != nil {
-		return err
+		return "", Fatal(err)
 	}
-	//defer os.Remove(efiBin)
 
 	// generate the EFI boot disk image
 	efiImage := filepath.Join(isoDir, "efi.img")
 	err = bootimg.CreateEFIImage(efiImage, efiBin, autoexec)
 	if err != nil {
-		return err
+		return "", Fatal(err)
 	}
-	//defer os.Remove(efiImage)
 
 	srcIso := filepath.Join(isoDir, "netboot.xyz.iso")
-	err = c.copyTemplateFile(template.Ipxe, srcIso, filepath.Join("ipxe", "netboot.xyz.iso"))
+	err = CopyFileFromFS(srcIso, filepath.Join("ipxe", "netboot.xyz.iso"), template.Ipxe)
 	if err != nil {
-		return err
+		return "", Fatal(err)
 	}
-	//defer os.Remove(srcIso)
 
 	// generate the netboot ISO
 	err = bootiso.CreateNetbootISOImage(isoFile, srcIso, efiImage, autoexec)
 	if err != nil {
-		return err
+		return "", Fatal(err)
 	}
 	fmt.Printf("Generated %s\n", isoFile)
-	return nil
+	return isoFile, nil
 }

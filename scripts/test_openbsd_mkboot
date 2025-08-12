@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+repo=/home/mkrueger/go/src/github.com/rstms/netboot
+template=$repo/template
+
+mac='00:0c:29:f5:84:d2'
+version=7.5
+arch=amd64
+url=https://zippy.rstms.net:4443
+src_iso=$template/dist/openbsd/$version/$arch/cd75.iso
+dst_dir=/home/mkrueger/.cache/netboot/ipxe
+username=$USER
+
+
+tempdir=$(mktemp -td test_mkboot_XXXXXXX)
+
+cleanup() {
+    if [ -d $tempdir ]; then
+	cmd="doas rm -rf $tempdir"
+	read -p "run '$cmd' [y/N]" CONFIRM
+	if [ "$CONFIRM" == "y" ]; then
+	    $cmd
+	else 
+	    echo "cowardly refused"
+	fi
+
+    fi
+}
+trap cleanup EXIT
+
+cp $template/mkboot/rc.netboot $tempdir
+cp $template/mkboot/rc.package $tempdir
+cp $template/mkboot/mkboot.openbsd $tempdir
+chmod +x $tempdir/mkboot.openbsd
+mkdir -p $dst_dir
+(
+    cd $tempdir
+    doas ./mkboot.openbsd $mac $version $arch $url $src_iso $dst_dir $username
+)
