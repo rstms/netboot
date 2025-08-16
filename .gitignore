@@ -5,11 +5,7 @@ cruft
 *.log
 *.pem
 *postactivate
-template/debian
-template/alpine
-template/pub
-template/netboot
-template/openbsd
+template/dist
 template/certs
 bootimg/testdata/*
 bootiso/testdata/*
