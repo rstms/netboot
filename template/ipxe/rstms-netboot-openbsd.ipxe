@@ -1,9 +1,33 @@
 #!ipxe
 
 # OpenBSD MAC autoconfig netboot
-set netboot http://netboot.rstms.net
 
-imgfree
-sanboot ${netboot}/ipxe/${net0/mac}.iso
+set netboot_http http://netboot.rstms.net
+
+iseq ${cls} serial && goto ignore_cls ||
+set cls:hex 1b:5b:4a  # ANSI clear screen sequence - "^[[J"
+set cls ${cls:string}
+:ignore_cls
+
+#console --x 1024 --y 768
+#console --picture ${netboot_http}/ipxe.png
+
+dhcp && goto dhcp_ok ||
+echo "failed DHCP network configuration"
+sleep 5
+reboot
+
+:dhcp_ok
+
+ntp pool.ntp.org && goto ntp_ok ||
+echo "failed NTP clock reset"
+sleep 5
+reboot 
+
+:ntp_ok
+
+set netboot_url ${netboot_http}/ipxe/${net0/mac}.boot
+echo OpenBSD netboot ${netboot_url}
+sanboot ${netboot_url}
 
 exit 0

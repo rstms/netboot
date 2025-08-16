@@ -22,7 +22,7 @@ const (
 func walkFS(fs filesystem.FileSystem, dir string) ([]string, error) {
 	entries, err := fs.ReadDir(dir)
 	if err != nil {
-		return []string{}, err
+		return []string{}, Fatal(err)
 	}
 	//fmt.Printf("walkFS: %s %v\n", dir, entries)
 	files := []string{}
@@ -37,7 +37,7 @@ func walkFS(fs filesystem.FileSystem, dir string) ([]string, error) {
 				files = append(files, name+"/")
 				dirFiles, err := walkFS(fs, filepath.Join(dir, entry.Name()))
 				if err != nil {
-					return []string{}, err
+					return []string{}, Fatal(err)
 				}
 				for _, dirFile := range dirFiles {
 					if dirFile != name {
@@ -56,13 +56,13 @@ func openImageFS(imageFilename string) (filesystem.FileSystem, error) {
 	log.Printf("openImageFS(%s)\n", imageFilename)
 	disk, err := diskfs.Open(imageFilename)
 	if err != nil {
-		return nil, err
+		return nil, Fatal(err)
 	}
 	//log.Printf("opened disk: %+v\n", disk)
 
 	fs, err := disk.GetFilesystem(0)
 	if err != nil {
-		return nil, err
+		return nil, Fatal(err)
 	}
 	//log.Printf("opened filesystem: %+v\n", fs)
 
@@ -73,17 +73,17 @@ func copyFileToImage(imageFS filesystem.FileSystem, dstPath string, srcPath stri
 	log.Printf("copyFileToImage(%s %s)\n", dstPath, srcPath)
 	ifp, err := os.Open(srcPath)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	defer ifp.Close()
 	ofp, err := imageFS.OpenFile(dstPath, os.O_CREATE|os.O_RDWR)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	defer ofp.Close()
 	_, err = io.Copy(ofp, ifp)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	return nil
 }
@@ -93,19 +93,19 @@ func copyFileFromImage(imageFS filesystem.FileSystem, dstPath string, srcPath st
 	log.Printf("copyFileFromImage(%s %s)\n", dstPath, srcPath)
 	ifp, err := imageFS.OpenFile(srcPath, os.O_RDONLY)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	defer ifp.Close()
 	//log.Printf("opened src: %v\n", ifp)
 	ofp, err := os.Create(dstPath)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	defer ofp.Close()
 	//log.Printf("opened dst: %v\n", ifp)
 	_, err = io.Copy(ofp, ifp)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	return nil
 }
@@ -114,17 +114,17 @@ func copyFileInterImage(dstFS filesystem.FileSystem, dstPath string, srcFS files
 	log.Printf("copyFileInterImage(%s %s)\n", dstPath, srcPath)
 	ifp, err := srcFS.OpenFile(srcPath, os.O_RDONLY)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	defer ifp.Close()
 	ofp, err := dstFS.OpenFile(dstPath, os.O_CREATE|os.O_RDWR)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	defer ofp.Close()
 	_, err = io.Copy(ofp, ifp)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	return nil
 }
@@ -132,12 +132,12 @@ func copyFileInterImage(dstFS filesystem.FileSystem, dstPath string, srcFS files
 func ImageInfo(imageFile string) (string, int64, error) {
 	stat, err := os.Stat(imageFile)
 	if err != nil {
-		return "", 0, err
+		return "", 0, Fatal(err)
 	}
 	size := stat.Size()
 	fs, err := openImageFS(imageFile)
 	if err != nil {
-		return "", 0, err
+		return "", 0, Fatal(err)
 	}
 	//fmt.Printf("%+v\n", fs)
 	name := strings.TrimSpace(fs.Label())
@@ -148,63 +148,72 @@ func ListImageFiles(imageFilename string) ([]string, error) {
 
 	fs, err := openImageFS(imageFilename)
 	if err != nil {
-		return []string{}, err
+		return []string{}, Fatal(err)
 	}
 	files, err := walkFS(fs, "/")
 	if err != nil {
-		return []string{}, err
+		return []string{}, Fatal(err)
 	}
 	return files, nil
 }
 
-func fileSize(label, filename string) (int64, error) {
+func fileSize(filename string) (int64, error) {
+	_, name := filepath.Split(filename)
 	stat, err := os.Stat(filename)
 	if err != nil {
-		return 0, err
+		return 0, Fatal(err)
 	}
 	size := stat.Size()
-	log.Printf("%s size (%s): %d\n", label, filename, size)
+	log.Printf("%s size: %d\n", name, size)
 	return size, nil
 }
 
-func CreateNetbootISOImage(dstImage, srcImage, efiImage, autoexec string) error {
+func CreateNetbootISOImage(dstImage, srcImage, efiImage, autoexec string, rootFiles []string) error {
 
-	log.Printf("CreateNetbootIsoImage: dst=%s src=%s efi=%s autoexec=%s\n", dstImage, srcImage, efiImage, autoexec)
+	log.Printf("CreateNetbootIsoImage: dst=%s src=%s efi=%s autoexec=%s files=%v\n", dstImage, srcImage, efiImage, autoexec, rootFiles)
 
-	autoexecSize, err := fileSize("autoexec", autoexec)
-	if err != nil {
-		return err
+	var outputIsoSize int64 = ISO_PAD_BYTES
+	var err error
+
+	// add sizes of files to be added to ISO root dir
+	for _, rootFile := range rootFiles {
+		size, err := fileSize(rootFile)
+		if err != nil {
+			return Fatal(err)
+		}
+		outputIsoSize += size
 	}
 
 	srcImageName, srcImageSize, err := ImageInfo(srcImage)
+	if err != nil {
+		return Fatal(err)
+	}
+	outputIsoSize += srcImageSize
 
 	log.Printf("srcImageName: %s\n", srcImageName)
 	log.Printf("srcImageSize: %d\n", srcImageSize)
 
 	tmpDir, err := os.MkdirTemp("", "netboot_isobuild_*")
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	efiImageSize, err := fileSize("EFI Image", efiImage)
+	efiImageSize, err := fileSize(efiImage)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
+	outputIsoSize += efiImageSize
 
 	// open the source ISO filesystem
 	srcFS, err := openImageFS(srcImage)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
-
-	// ensure enough space by lamely adding the length of what we're adding
-	// FIXME: this isn't frugal with the iso size
-	outputIsoSize := srcImageSize + efiImageSize + autoexecSize + ISO_PAD_BYTES
 
 	isoDisk, err := diskfs.Create(dstImage, outputIsoSize, diskfs.SectorSizeDefault)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 
 	//log.Printf("output ISO disk: %+v\n", isoDisk)
@@ -216,14 +225,14 @@ func CreateNetbootISOImage(dstImage, srcImage, efiImage, autoexec string) error 
 	}
 	dstFS, err := isoDisk.CreateFilesystem(spec)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 
 	//log.Printf("output ISO filesystem: %+v\n", dstFS)
 
 	isoFiles, err := ListImageFiles(srcImage)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 
 	var isoLinuxBin string
@@ -235,13 +244,13 @@ func CreateNetbootISOImage(dstImage, srcImage, efiImage, autoexec string) error 
 			log.Printf("writing modified autoexec.ipxe: %s", autoexec)
 			err = copyFileToImage(dstFS, "autoexec.ipxe", autoexec)
 			if err != nil {
-				return err
+				return Fatal(err)
 			}
 		case "/esp.img":
 			log.Printf("writing generated EFI image: %s", efiImage)
 			err = copyFileToImage(dstFS, "efi.img", efiImage)
 			if err != nil {
-				return err
+				return Fatal(err)
 			}
 		case "/boot.catalog":
 			// don't copy (autogenerated)
@@ -249,8 +258,18 @@ func CreateNetbootISOImage(dstImage, srcImage, efiImage, autoexec string) error 
 			log.Printf("copying: %s\n", file)
 			err = copyFileInterImage(dstFS, file, srcFS, file)
 			if err != nil {
-				return err
+				return Fatal(err)
 			}
+		}
+	}
+
+	// add rootFiles to ISO root directory
+	for _, pathname := range rootFiles {
+		_, name := filepath.Split(pathname)
+		log.Printf("adding: %s -> %s\n", pathname, name)
+		err = copyFileToImage(dstFS, name, pathname)
+		if err != nil {
+			return Fatal(err)
 		}
 	}
 
@@ -284,7 +303,7 @@ func CreateNetbootISOImage(dstImage, srcImage, efiImage, autoexec string) error 
 	log.Printf("finalizing: %+v\n", options)
 	err = iso.Finalize(options)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 	log.Printf("finalized iso: %s\n", dstImage)
 	return nil

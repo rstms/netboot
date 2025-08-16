@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+name=keymaster
+
+echo generating hashed CA cert directory for debian
+
+fail () {
+    echo >&2 $(basename $0): "$@"
+    exit 1
+}
+
+target_of () {
+    ls -l $1 | awk '{print $(NF)}'
+}
+
+to_crt() {
+    local name=$1
+    printf "%s.crt" ${name%.*}
+}
+
+relink() {
+    rm $1
+    ln -s $(basename $2) $1
+}
+
+workdir=template/certs/debian
+certsdir=$workdir/etc/ssl/certs
+key=template/certs/${name}.pem
+
+rm -rf $workdir
+mkdir -p $certsdir
+
+awk <$key >$certsdir/${name}_root.pem '{print} /---END CERTIFICATE---/{exit}'
+awk <$key >$certsdir/${name}_intermediate.pem -v found=0 '{if (found) print} /---END CERTIFICATE/{found=1}'
+
+case $(uname) in
+    OpenBSD)
+	( cd $certsdir; openssl certhash . );;
+    Linux)
+	( cd $certsdir; openssl rehash . );;
+    *) fail "unsupported OS for hashing debian CA certs";;
+esac
+
+for pem in $(find $certsdir -type f -name '*.pem'); do
+    mv $pem $(to_crt $pem)
+done
+
+for link in $(find $certsdir -type l); do 
+    tgt=$(target_of $link)
+    #echo link=$link target=$tgt renamed=$(to_crt $tgt)
+    relink $link $(to_crt $tgt)
+done
+( cd $workdir && tar zcvf ../cacerts.tgz etc )
+rm -rf $workdir

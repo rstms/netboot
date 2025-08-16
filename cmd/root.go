@@ -51,9 +51,10 @@ requested by the netboot IPXE bootstrap.
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		options := server.Options{
-			Hostname: ViperGetString("hostname"),
-			Address:  ViperGetString("address"),
-			Port:     ViperGetInt("port"),
+			Hostname:  ViperGetString("hostname"),
+			Address:   ViperGetString("address"),
+			HttpPort:  ViperGetInt("http_port"),
+			HttpsPort: ViperGetInt("https_port"),
 		}
 		server, err := server.NewServer(&options)
 		cobra.CheckErr(err)
@@ -77,7 +78,8 @@ func init() {
 	OptionSwitch(rootCmd, "debug", "d", "produce debug output")
 	OptionSwitch(rootCmd, "verbose", "v", "increase verbosity")
 	OptionString(rootCmd, "hostname", "H", server.DEFAULT_HOSTNAME, "TLS hostname")
-	OptionString(rootCmd, "address", "a", server.DEFAULT_ADDRESS, "listen address")
-	OptionString(rootCmd, "port", "p", server.DEFAULT_PORT, "listen port")
+	OptionString(rootCmd, "address", "a", server.DEFAULT_ADDRESS, "listen bind address")
+	OptionString(rootCmd, "http-port", "p", server.DEFAULT_HTTP_PORT, "http listen port")
+	OptionString(rootCmd, "https-port", "P", server.DEFAULT_HTTPS_PORT, "https listen port")
 	OptionSwitch(rootCmd, "foreground", "f", "run in foreground")
 }

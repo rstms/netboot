@@ -1,8 +1,11 @@
 package server
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 )
 
@@ -56,4 +59,41 @@ func CopyFileFromFS(dstPathname, srcPathname string, srcFS fs.FS) error {
 		return Fatal(err)
 	}
 	return nil
+}
+
+func ExtractTarballFile(dstPath, srcPath, tarPath string) error {
+	log.Printf("ExtractTarballFile(%s, %s, %s)\n", dstPath, srcPath, tarPath)
+	tarFile, err := os.Open(tarPath)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer tarFile.Close()
+	gzReader, err := gzip.NewReader(tarFile)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer gzReader.Close()
+	tarReader := tar.NewReader(gzReader)
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return Fatal(err)
+		}
+		if header.Name == srcPath {
+			dstFile, err := os.Create(dstPath)
+			if err != nil {
+				return Fatal(err)
+			}
+			defer dstFile.Close()
+			_, err = io.Copy(dstFile, tarReader)
+			if err != nil {
+				return Fatal(err)
+			}
+			return nil
+		}
+	}
+	return Fatal(os.ErrNotExist)
 }

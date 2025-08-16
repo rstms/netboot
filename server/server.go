@@ -21,12 +21,14 @@ import (
 const Version = "1.0.0"
 const DEFAULT_HOSTNAME = "netboot.local"
 const DEFAULT_ADDRESS = "127.0.0.1"
-const DEFAULT_PORT = "2014"
+const DEFAULT_HTTPS_PORT = "4443"
+const DEFAULT_HTTP_PORT = "4444"
 
 type Server struct {
 	Hostname   string
 	Address    string
-	Port       int
+	HttpsPort  int
+	HttpPort   int
 	verbose    bool
 	debug      bool
 	hosts      *HostCache
@@ -36,17 +38,19 @@ type Server struct {
 }
 
 type Options struct {
-	Hostname string
-	Address  string
-	Port     int
-	CacheDir string
+	Hostname  string
+	Address   string
+	HttpPort  int
+	HttpsPort int
+	CacheDir  string
 }
 
 func NewServer(options *Options) (*Server, error) {
 	viper.SetDefault("netboot.shutdown_timeout_seconds", 10)
 	viper.SetDefault("netboot.hostname", DEFAULT_HOSTNAME)
 	viper.SetDefault("netboot.address", DEFAULT_ADDRESS)
-	viper.SetDefault("netboot.port", DEFAULT_PORT)
+	viper.SetDefault("netboot.https_port", DEFAULT_HTTPS_PORT)
+	viper.SetDefault("netboot.http_port", DEFAULT_HTTP_PORT)
 	userCache, err := os.UserCacheDir()
 	if err != nil {
 		return nil, err
@@ -61,8 +65,11 @@ func NewServer(options *Options) (*Server, error) {
 	if options.Address == "" {
 		options.Address = viper.GetString("netboot.address")
 	}
-	if options.Port == 0 {
-		options.Port = viper.GetInt("netboot.port")
+	if options.HttpsPort == 0 {
+		options.HttpsPort = viper.GetInt("netboot.https_port")
+	}
+	if options.HttpPort == 0 {
+		options.HttpPort = viper.GetInt("netboot.http_port")
 	}
 	if options.CacheDir == "" {
 		options.CacheDir = viper.GetString("netboot.cache_dir")
@@ -74,109 +81,64 @@ func NewServer(options *Options) (*Server, error) {
 	s := Server{
 		Hostname:   options.Hostname,
 		Address:    options.Address,
-		Port:       options.Port,
+		HttpPort:   options.HttpPort,
+		HttpsPort:  options.HttpsPort,
 		verbose:    viper.GetBool("netboot.verbose"),
 		debug:      viper.GetBool("netboot.verbose"),
 		hosts:      hostCache,
 		shutdown:   make(chan struct{}, 1),
 		NetbootDir: options.CacheDir,
 	}
+
+	s.hosts.httpPort = s.HttpPort
+	s.hosts.httpsPort = s.HttpsPort
+
 	return &s, nil
 }
 
-/*
-func (s *Server) handleEndpoints(w http.ResponseWriter, r *http.Request) {
-
-	log.Printf("%s %s %s (%d)\n", r.RemoteAddr, r.Method, r.RequestURI, r.ContentLength)
-	switch r.Method {
-	case "GET":
-		switch r.URL.Path {
-		case "/api/hosts/":
-			s.hosts.ListHostsHandler(w, r)
-			return
-		default:
-			if strings.HasPrefix(r.URL.Path, "/api/booted/") {
-				s.hosts.HostBootedHandler(w, r)
-				return
-			}
-			if strings.HasPrefix(r.URL.Path, "/api/address/") {
-				s.hosts.HostAddressQueryHandler(w, r)
-				return
-			}
-			if strings.HasPrefix(r.URL.Path, "/pub/") {
-
-
-
-			}
-		}
-	case "PUT":
-		switch r.URL.Path {
-		case "/api/host/":
-			s.hosts.AddHostHandler(w, r)
-			return
-		}
-	case "DELETE":
-		switch r.URL.Path {
-		case "/api/host/":
-			s.hosts.DeleteHostHandler(w, r)
-			return
-		}
-	case "POST":
-		switch r.URL.Path {
-		case "/api/tarball/":
-			s.hosts.UploadPackageHandler(w, r)
-			return
-		}
-	}
-	http.Error(w, "WAT?", http.StatusNotFound)
-
-}
-*/
-
 func (s *Server) Stop() error {
-	log.Println("sending on shutdown channel")
+	log.Println("requesting shutdown")
 	s.shutdown <- struct{}{}
 	log.Println("waiting for shutdown")
 	s.wg.Wait()
-	log.Println("wait complete")
+	log.Println("shutdown complete")
 	return nil
 }
 
 func (s *Server) Start() error {
 
-	// FIXME: validate client certificates
+	httpMux := http.NewServeMux()
+	httpMux.HandleFunc("GET /", s.hosts.RootHandler)
+	httpMux.HandleFunc("GET /version/", s.hosts.VersionHandler)
+	httpMux.HandleFunc("GET /debian/", s.hosts.DebianHandler)
+	httpMux.HandleFunc("GET /debian-security/", s.hosts.DebianSecurityHandler)
+	httpMux.HandleFunc("GET /ipxe/", s.hosts.IPXEHandler)
 
-	//netbootFS := os.DirFS(s.NetbootDir)
-	http.HandleFunc("GET /", s.hosts.RootHandler)
-	http.HandleFunc("GET /utc", s.hosts.UTCHandler)
-	http.HandleFunc("GET /dist/openbsd/{version}/{arch}/{file}", s.hosts.GDLHandler)
-	http.HandleFunc("GET /ipxe/", s.hosts.IPXEHandler)
-	http.HandleFunc("GET /debian/", s.hosts.DebianHandler)
-	http.HandleFunc("GET /pub/OpenBSD/", s.hosts.OpenBSDHandler)
+	httpsMux := http.NewServeMux()
+	httpsMux.HandleFunc("GET /", s.hosts.RootHandler)
+	httpsMux.HandleFunc("GET /version/", s.hosts.VersionHandler)
+	httpsMux.HandleFunc("GET /utc", s.hosts.UTCHandler)
+	httpsMux.HandleFunc("GET /gdl/{version}/{arch}/{file}", s.hosts.GDLHandler)
+	httpsMux.HandleFunc("GET /ipxe/", s.hosts.IPXEHandlerTLS)
+	httpsMux.HandleFunc("GET /alpine/", s.hosts.AlpineHandler)
+	httpsMux.HandleFunc("GET /debian/", s.hosts.DebianHandler)
+	httpsMux.HandleFunc("GET /debian-security/", s.hosts.DebianSecurityHandler)
+	httpsMux.HandleFunc("GET /pub/OpenBSD/", s.hosts.OpenBSDHandler)
+	httpsMux.HandleFunc("GET /api/hosts/", s.hosts.ListHostsHandler)
+	httpsMux.HandleFunc("GET /api/booted/", s.hosts.HostBootedHandler)
+	httpsMux.HandleFunc("GET /api/address/", s.hosts.HostAddressQueryHandler)
+	httpsMux.HandleFunc("PUT /api/host/", s.hosts.AddHostHandler)
+	httpsMux.HandleFunc("DELETE /api/host/", s.hosts.DeleteHostHandler)
+	httpsMux.HandleFunc("POST /api/tarball/", s.hosts.UploadPackageHandler)
 
-	/*
-		http.Handle("GET /{basename}", http.FileServer(http.FS(netbootFS)))
-			http.Handle("GET /netboot/{basename}.ipxe{$}", http.FileServer(http.FS(netbootFS)))
-			http.Handle("GET /netboot/{basename}.tgz{$}", http.FileServer(http.FS(netbootFS)))
-			http.Handle("GET /netboot/{basename}.initrd{$}", http.FileServer(http.FS(netbootFS)))
-			http.Handle("GET /netboot/{basename}.png{$}", http.FileServer(http.FS(netbootFS)))
-			http.Handle("GET /netboot/{basename}.conf{$}", http.FileServer(http.FS(netbootFS)))
-			http.Handle("GET /netboot/{basename}.initrd{$}", http.FileServer(http.FS(netbootFS)))
-	*/
+	httpsServer := &http.Server{
+		Addr:    fmt.Sprintf("%s:%d", s.Address, s.HttpsPort),
+		Handler: httpsMux,
+	}
 
-	http.HandleFunc("GET /api/hosts/", s.hosts.ListHostsHandler)
-	http.HandleFunc("GET /api/booted/", s.hosts.HostBootedHandler)
-	http.HandleFunc("GET /api/address/", s.hosts.HostAddressQueryHandler)
-	//http.Handle("GET /pub/", http.FileServer(http.FS(template.OpenBSD)))
-	//http.Handle("GET /alpine/", http.FileServer(http.FS(template.Alpine)))
-	//http.Handle("GET /debian/", http.FileServer(http.FS(template.Debian)))
-	http.HandleFunc("PUT /api/host/", s.hosts.AddHostHandler)
-	http.HandleFunc("DELETE /api/host/", s.hosts.DeleteHostHandler)
-	http.HandleFunc("POST /api/tarball/", s.hosts.UploadPackageHandler)
-
-	listen := fmt.Sprintf("%s:%d", s.Address, s.Port)
-	server := &http.Server{
-		Addr: listen,
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf("%s:%d", s.Address, s.HttpPort),
+		Handler: httpMux,
 	}
 
 	certFile := viper.GetString("netboot.cert")
@@ -184,7 +146,6 @@ func (s *Server) Start() error {
 	caFile := viper.GetString("netboot.ca")
 
 	if certFile != "" || keyFile != "" || caFile != "" {
-		tlsConfig := tls.Config{}
 		if certFile == "" || keyFile == "" || caFile == "" {
 			return fmt.Errorf("incomplete TLS config: cert=%s key=%s ca=%s\n", certFile, keyFile, caFile)
 		}
@@ -194,45 +155,70 @@ func (s *Server) Start() error {
 			return fmt.Errorf("error loading client certificate pair: %v", err)
 		}
 
-		caCert, err := ioutil.ReadFile(os.ExpandEnv(caFile))
+		caCerts, err := ioutil.ReadFile(os.ExpandEnv(caFile))
 		if err != nil {
 			return fmt.Errorf("error loading certificate authority file: %v", err)
 		}
 
-		caCertPool, err := x509.SystemCertPool()
-		if err != nil {
-			return fmt.Errorf("error opening system certificate pool: %v", err)
+		clientCertPool := x509.NewCertPool()
+		ok := clientCertPool.AppendCertsFromPEM(caCerts)
+		if !ok {
+			return fmt.Errorf("error loading client validation certificate authority file: %v", err)
 		}
-		caCertPool.AppendCertsFromPEM(caCert)
-		tlsConfig.Certificates = []tls.Certificate{cert}
-		tlsConfig.RootCAs = caCertPool
-		server.TLSConfig = &tlsConfig
+
+		httpsServer.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.VerifyClientCertIfGiven,
+			ClientCAs:    clientCertPool,
+		}
+		//fmt.Printf("configured TLS: %s %s %s\n", caFile, certFile, keyFile)
 	}
+
+	log.Printf("netboot v%s started as PID %d\n", Version, os.Getpid())
 
 	s.wg.Add(1)
 	go func() {
-		defer log.Println("exiting listener")
+		defer log.Println("HTTPS server exiting")
 		defer s.wg.Done()
-		log.Printf("netboot v%s started as PID %d listening on %s\n", Version, os.Getpid(), listen)
-		err := server.ListenAndServeTLS("", "")
+		log.Printf("HTTPS server listening on %s\n", httpsServer.Addr)
+		err := httpsServer.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
-			log.Fatalln("ListenAndServe failed: ", err)
+			log.Fatalln("ListenAndServeTLS failed: ", err)
 		}
-		log.Println("ListenAndServerTLS returned")
+		//log.Println("returned from ListenAndServeTLS")
 	}()
 
 	s.wg.Add(1)
 	go func() {
-		defer log.Println("exiting closer")
+		defer log.Println("HTTP server exiting")
+		defer s.wg.Done()
+		log.Printf("HTTP server listening on %s\n", httpServer.Addr)
+		err := httpServer.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatalln("ListenAndServe failed: ", err)
+		}
+		//log.Println("returned from ListenAndServe")
+	}()
+
+	s.wg.Add(1)
+	go func() {
+		//defer log.Println("exiting closer")
 		defer s.wg.Done()
 		<-s.shutdown
-		log.Println("read from shutdown channel")
+		log.Println("received shutdown request")
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(viper.GetInt64("netboot.shutdown_timeout_seconds"))*time.Second)
 		defer cancel()
-		log.Println("calling server shutdown")
-		err := server.Shutdown(ctx)
+
+		log.Println("shutting down HTTPS server")
+		err := httpsServer.Shutdown(ctx)
 		if err != nil {
-			log.Fatalln("Server Shutdown failed: ", err)
+			log.Fatalln("HTTPS Server Shutdown failed: ", err)
+		}
+
+		log.Println("shutting down HTTP server")
+		err = httpServer.Shutdown(ctx)
+		if err != nil {
+			log.Fatalln("HTTP Server Shutdown failed: ", err)
 		}
 	}()
 	return nil

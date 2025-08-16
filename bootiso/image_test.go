@@ -48,6 +48,7 @@ func TestISOCreate(t *testing.T) {
 	sourceImage := templateFile(t, "netboot.xyz.iso")
 	efiImage := templateFile(t, "efi.img")
 	autoexecFile := templateFile(t, "autoexec.ipxe")
-	err := CreateNetbootISOImage(outputImage, sourceImage, efiImage, autoexecFile)
+	rootFiles := []string{}
+	err := CreateNetbootISOImage(outputImage, sourceImage, efiImage, autoexecFile, rootFiles)
 	require.Nil(t, err)
 }

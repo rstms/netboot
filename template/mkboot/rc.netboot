@@ -71,6 +71,8 @@ configure_netboot() {
     cd /dev
     . ./MAKEDEV $_disk
     cd /
+    ls -al /dev 
+    read foo
 
     if [ -e /install.image ]; then
         netboot_update_image
@@ -85,14 +87,14 @@ configure_netboot() {
     mount /dev/${_disk}a /usr/local
     
     cd /usr/local
-    ftp ${_url}/${_gdl_path}
-    tar zxf gdl??.tgz
+    ftp ${_url}/gdl/${_gdl_path}
+    tar zxf gdl.tgz
     chmod 0755 bin/*
     bin/install_gdl
     cd /
 
-    /usr/local/bin/gdl -ca /etc/ssl/keymaster.pem -cert /etc/ssl/netboot.pem -key /etc/ssl/netboot.key ${_url}/ipxe/${_mac}.conf
-    mv ${_mac}.conf auto_install.conf
+    /usr/local/bin/gdl -ca /etc/ssl/keymaster.pem -cert /etc/ssl/netboot.pem -key /etc/ssl/netboot.key ${_url}/ipxe/${_mac}.response
+    mv ${_mac}.response auto_install.conf
 
     umount /usr/local
     dd if=/dev/zero of=/dev/${_disk}c count=128

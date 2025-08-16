@@ -3,6 +3,7 @@ notes
 cruft
 *.core
 *.log
+*.pem
 *postactivate
 template/debian
 template/alpine

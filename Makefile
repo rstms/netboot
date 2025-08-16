@@ -11,12 +11,16 @@ rstms_modules = $(shell awk <go.mod '/^module/{next} /rstms/{print $$1}')
 
 gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(info git status is clean))
 
-template_files = template/certs/keymaster.pem 
+keymaster = template/certs/keymaster.pem
+debian_cacerts = template/certs/cacerts.tgz
+
+generated_template_files = $(debian_cacerts)
 
 $(program): build
 
-build: fmt $(template_files)
+gen: $(debian_cacerts)
 
+build: fmt gen
 	fix go build . ./...
 	go build
 
@@ -43,22 +47,27 @@ release:
 	@$(if $(update),gh release delete -y v$(version),)
 	gh release create v$(version) --notes "v$(version)"
 
+latest_module_release = $(shell gh --repo $(1) release list --json tagName --jq '.[0].tagName')
+
 update:
-	@echo updating modules
-	$(foreach module,$(rstms_modules),go get $(module)@latest;)
+	@echo checking dependencies for updated versions 
+	@$(foreach module,$(rstms_modules),go get $(module)@$(call latest_module_release,$(module));)
 
 mirrors:
 	cd template && gmake -j 7 
-	scripts/update_debian_initrd
+
+
+clean-mirrors:
+	find template/dist -type f -not -name 'gdl??.tgz' -exec rm \{\} \;
 
 clean:
 	rm -f $(program) *.core 
 	go clean
-	rm -rf ~/.cache/netboot
-	mkdir ~/.cache/netboot
-	rm -rf template/certs/*
-	touch template/certs/.placeholder
+	rm -rf /tmp/netboot*
+	rm -rf ~/.cache/netboot/ipxe
+	mkdir ~/.cache/netboot/ipxe
 	rm -f template/robots.txt template/wget-log*
+	rm -rf template/certs/debian
 
 sterile: clean
 	which $(program) && go clean -i || true
@@ -66,10 +75,15 @@ sterile: clean
 	go clean -cache
 	go clean -modcache
 	rm -f go.mod go.sum
+	rm -rf ~/.cache/netboot
+	rm -rf template/certs/*
+	touch template/certs/.placeholder
 
-template/certs/keymaster.pem: /etc/ssl/keymaster.pem
+$(keymaster): /etc/ssl/keymaster.pem
 	cp $< $@
 
-test-openbsd-mkboot:
-	scripts/test_openbsd_mkboot
+$(debian_cacerts): $(keymaster)
+	scripts/hash_debian_cacerts
 
+run:
+	./netboot -vl-

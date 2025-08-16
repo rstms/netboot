@@ -5,33 +5,26 @@
 set -ue
 
 # called as: doas /root/mkboot.openbsd $mac $version $arch $url $src_iso $dst_dir
+echo "Generating OpenBSD boot ISO"
 
 
-MAC=$1
-OSREV=$2
-MACHINE=$3
-URL=$4
-SRC_ISO=$5
-DST_DIR=$6
+DST_ISO=$1
+SRC_ISO=$2
+MAC=$3
+OSREV=$4
+MACHINE=$5
+URL=$6
 MKBOOT_USER=$7
+BOOT_FILES=$8
 SERIAL=
-if [ $# -gt 7 ]; then
-    SERIAL=$8
+if [ $# -gt 8 ]; then
+    SERIAL=$9
 fi
 
 # OSREV	    example: 7.5
 # MACHINE   example: amd64
 # SRC_ISO   /var/www/htdocs/pub/OpenBSD/7.5/amd64/cd75.iso
-
-echo "Generating OpenBSD boot ISO"
-echo MAC=$MAC
-echo OSREV=$OSREV
-echo MACHINE=$MACHINE
-echo URL=$URL
-echo SRC_ISO=$SRC_ISO
-echo DST_DIR=$DST_DIR
-echo SERIAL=$SERIAL
-
+#
 
 fail() {
   echo >&2 $0: "$@"
@@ -45,8 +38,16 @@ pwd | grep -q '^/tmp' || fail "not running under /tmp"
 [ -n "$URL" ] || fail "no URL"
 [ -n "$SRC_ISO" ] || fail "no SRC_ISO"
 [ -f "$SRC_ISO" ] || fail "SRC_ISO $SRC_ISO is not a file"
-[ -n "$DST_DIR" ] || fail "no DST_DIR"
-[ -d "$DST_DIR" ] || fail "DST_DIR $DST_DIR is not a directory"
+[ -n "$DST_ISO" ] || fail "no DST_ISO"
+[ -f "$DST_ISO" ] && rm $DST_ISO
+
+echo DST_ISO=$DST_ISO
+echo SRC_ISO=$SRC_ISO
+echo MAC=$MAC
+echo OSREV=$OSREV
+echo MACHINE=$MACHINE
+echo URL=$URL
+echo SERIAL=$SERIAL
 
 vnd0_clear() {
     vnconfig -l | grep -q 'vnd0: not in use'
@@ -110,10 +111,10 @@ modify_ramdisk_on_vnd1() {
   chmod 0644 rd/netboot.env
 
   # extract /etc/ssl from tarball to ramdisk /etc/ssl
-  tar zxf ${DST_DIR}/${MAC}.tgz etc/ssl
+  tar zxf package.tgz etc/ssl
 
   # extract /install.image from tarball to ramdisk /
-  if tar zxf ${DST_DIR}/${MAC}.tgz install.image 2>/dev/null; then
+  if tar zxf package.tgz install.image 2>/dev/null; then
       echo "Image update script detected."
       install -o root -g wheel -m 0755 install.image rd/install.image
   fi
@@ -144,6 +145,13 @@ modify_ramdisk_on_vnd1() {
   vnconfig -u vnd1
   rmdir rd
 
+}
+
+copy_boot_files() {
+    mkdir cd/files
+    while read file; do
+      cp -v $file cd/files/$(basename $file)
+    done
 }
 
 build_iso() {
@@ -182,9 +190,11 @@ build_iso() {
   if [ -n "$SERIAL" ]; then
     echo "set tty $SERIAL" >>cd/etc/boot.conf
   fi
+
+  copy_boot_files <$BOOT_FILES
   
   # build the iso
-  mkhybrid -a -R -T -L -l -d -D -N -o $DST_DIR/$MAC.iso \
+  mkhybrid -a -R -T -L -l -d -D -N -o $DST_ISO \
           -A "OpenBSD ${OSREV} ${MACHINE} netboot CD" \
   	    -P "Copyright (c) `date +%Y` Theo de Raadt, The OpenBSD project" \
   	    -p "Theo de Raadt <deraadt@openbsd.org>, install modifications by Matt Krueger <mkrueger@rstms.net>" \
@@ -195,6 +205,6 @@ build_iso() {
 }
 
 build_iso
-chown $MKBOOT_USER.$MKBOOT_USER $DST_DIR/$MAC.iso
-chmod 0660 $DST_DIR/$MAC.iso
-ls -al $DST_DIR/$MAC.iso
+chown -R $MKBOOT_USER.$MKBOOT_USER .
+chmod 0660 $DST_ISO
+ls -al $DST_ISO

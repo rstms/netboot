@@ -8,14 +8,15 @@ import (
 	"testing"
 )
 
-const distInitrd = "debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz"
-
 func TestInitrdGenerate(t *testing.T) {
 
-	err := copyFileFS("testdata", "initrd.gz", template.Debian, distInitrd)
+	srcInitrd := filepath.Join("debian", "bookworm", "amd64", "initrd.gz")
+	dstInitrd := filepath.Join("testdata", "initrd.gz")
+
+	err := CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
 	require.Nil(t, err)
 
-	initrd, err := UnzipFile(filepath.Join("testdata", "initrd.gz"))
+	initrd, err := UnzipFile(dstInitrd)
 	require.Nil(t, err)
 
 	preseed := filepath.Join("testdata", "preseed.cfg")
