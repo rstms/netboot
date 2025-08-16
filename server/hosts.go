@@ -202,11 +202,11 @@ func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, co
 func requireClientCert(w http.ResponseWriter, r *http.Request) bool {
 	cert := checkClientCert(w, r)
 	if cert == nil {
-		Warning("Request CN=MISSING %s %s %s\n", r.RemoteAddr, r.Method, r.URL.Path)
+		Warning("Request [CN=MISSING] %s %s %s\n", r.RemoteAddr, r.Method, r.URL.Path)
 		fail(w, "authorization failed", http.StatusForbidden)
 		return false
 	}
-	log.Printf("Request: CN=%s %s %s %s\n", cert.Subject, r.RemoteAddr, r.Method, r.URL.Path)
+	log.Printf("Request: [%s] %s %s %s\n", cert.Subject, r.RemoteAddr, r.Method, r.URL.Path)
 	return true
 }
 
@@ -314,11 +314,11 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 
 func (c *HostCache) ipxeHandler(scheme string, w http.ResponseWriter, r *http.Request) {
 	cert := checkClientCert(w, r)
-	clientCN := "<none>"
+	clientCN := "no_cert"
 	if cert != nil {
 		clientCN = cert.Subject.String()
 	}
-	log.Printf("Request: CN=%s %s %s %s %s\n", clientCN, r.RemoteAddr, scheme, r.Method, r.URL.Path)
+	log.Printf("Request: [%s] %s %s %s %s\n", clientCN, r.RemoteAddr, scheme, r.Method, r.URL.Path)
 
 	ext, ok := c.checkIpxePath(w, r)
 	if !ok {
@@ -729,6 +729,13 @@ func (c *HostCache) GenerateISO(tempDir, url string, bootFiles []string, config 
 	// extract tarball postinstall to temp dir for debian mkboot
 	postinstall := filepath.Join(tempDir, "postinstall")
 	err = ExtractTarballFile(postinstall, "postinstall", tarball)
+	if err != nil {
+		return "", Fatal(err)
+	}
+
+	// write netboot.env to temp dir for openbsd mkboot
+	netbootEnvData := fmt.Sprintf("_url=%s\n_mac=%s\n", url, config.Address)
+	err = os.WriteFile(filepath.Join(tempDir, "netboot.env"), []byte(netbootEnvData), 0644)
 	if err != nil {
 		return "", Fatal(err)
 	}

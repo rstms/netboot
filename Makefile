@@ -11,14 +11,18 @@ rstms_modules = $(shell awk <go.mod '/^module/{next} /rstms/{print $$1}')
 
 gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(info git status is clean))
 
+openbsd_netboot_iso = template/ipxe/openbsd-7.5-amd64.iso template/ipxe/openbsd-7.6-amd64.iso template/ipxe/openbsd-7.7-amd64.iso 
 keymaster = template/certs/keymaster.pem
 debian_cacerts = template/certs/cacerts.tgz
 
-generated_template_files = $(debian_cacerts)
+generated_template_files = $(debian_cacerts) $(openbsd_netboot_iso)
 
 $(program): build
 
-gen: $(debian_cacerts)
+gen: $(generated_template_files)
+
+gen-clean:
+	rm -f $(generated_template_files)
 
 build: fmt gen
 	fix go build . ./...
@@ -84,6 +88,15 @@ $(keymaster): /etc/ssl/keymaster.pem
 
 $(debian_cacerts): $(keymaster)
 	scripts/hash_debian_cacerts
+
+template/ipxe/openbsd-7.5-amd64.iso: template/dist/openbsd/7.5/amd64/cd75.iso
+	scripts/generate_openbsd_netboot_iso 7.5 amd64
+
+template/ipxe/openbsd-7.6-amd64.iso: template/dist/openbsd/7.6/amd64/cd76.iso
+	scripts/generate_openbsd_netboot_iso 7.6 amd64
+
+template/ipxe/openbsd-7.7-amd64.iso: template/dist/openbsd/7.7/amd64/cd77.iso
+	scripts/generate_openbsd_netboot_iso 7.7 amd64
 
 run:
 	./netboot -vl-

@@ -1,17 +1,13 @@
 package server
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/rstms/netboot/bootimg"
 	"github.com/rstms/netboot/bootiso"
 	"github.com/rstms/netboot/template"
 	"log"
 	"os"
-	"os/exec"
-	"os/user"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -85,88 +81,26 @@ func (m *MkBoot) writeBootFileList() (string, error) {
 func (m *MkBoot) mkbootOpenBSD() error {
 	log.Printf("mkbootOpenBSD: %s %s\n", m.Config.Version, m.Config.Arch)
 
-	if runtime.GOOS != "openbsd" {
-		return Fatalf("cannot generate OpenBSD boot resources on %s", runtime.GOOS)
-	}
-
-	distDir := filepath.Join("dist", "openbsd", m.Config.Version, m.Config.Arch)
-	if !IsDirFS(template.Dist, distDir) {
-		return Fatalf("unsupported: OpenBSD %s %s", m.Config.Version, m.Config.Arch)
-	}
-
-	srcIso := "cd" + strings.ReplaceAll(m.Config.Version, ".", "") + ".iso"
-
-	err := CopyFileFromFS(filepath.Join(m.TempDir, srcIso), filepath.Join(distDir, srcIso), template.Dist)
+	// copy openbsd netboot iso: /ipxe/MAC.boot
+	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.iso", m.Config.Version, m.Config.Arch))
+	dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
+	err := CopyFileFromFS(dstBoot, srcBoot, template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
 
-	script := "mkboot.openbsd"
-	for _, file := range []string{script, "rc.netboot", "rc.package"} {
-		err = CopyFileFromFS(filepath.Join(m.TempDir, file), filepath.Join("mkboot", file), template.Mkboot)
-		if err != nil {
-			return Fatal(err)
-		}
-	}
-	err = os.Chmod(filepath.Join(m.TempDir, script), 0700)
+	// add netboot.env to iso image
+	m.BootFiles = append(m.BootFiles, filepath.Join(m.TempDir, "netboot.env"))
+
+	// add gdl.tgz to iso image
+	tag := strings.ReplaceAll(m.Config.Version, ".", "")
+	srcGdl := filepath.Join("dist", "openbsd", m.Config.Version, m.Config.Arch, "gdl"+tag+".tgz")
+	dstGdl := filepath.Join(m.TempDir, "gdl.tgz")
+	err = CopyFileFromFS(dstGdl, srcGdl, template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
-
-	user, err := user.Current()
-	if err != nil {
-		return Fatal(err)
-	}
-
-	bootFiles, err := m.writeBootFileList()
-	if err != nil {
-		return Fatal(err)
-	}
-
-	// FIXME: add GDL to ISO
-	// FIXME: generate client certs for ISO
-
-	dstIso := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
-
-	args := []string{
-		"./" + script,
-		dstIso,
-		srcIso,
-		m.Config.Address,
-		m.Config.Version,
-		m.Config.Arch,
-		m.URL,
-		user.Username,
-		bootFiles,
-	}
-	if m.Config.Serial != "" {
-		args = append(args, m.Config.Serial)
-	}
-	cmd := exec.Command("/usr/bin/doas", args...)
-	log.Printf("executing: %v\n", cmd)
-
-	var stdout bytes.Buffer
-	//cmd.Stdout = &stdout
-	var stderr bytes.Buffer
-	//cmd.Stderr = &stderr
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	cmd.Dir = m.TempDir
-	err = cmd.Run()
-	switch err.(type) {
-	case nil:
-	case *exec.ExitError:
-		exitCode := cmd.ProcessState.ExitCode()
-		elines := strings.Split(stderr.String(), "\n")
-		for _, eline := range elines {
-			log.Printf("stderr: %s\n", eline)
-		}
-		return Fatalf("script %s exited %d\n", script, exitCode)
-	default:
-		return Fatal(err)
-	}
-	log.Println(stdout.String())
+	m.BootFiles = append(m.BootFiles, dstGdl)
 
 	return m.buildISO()
 }

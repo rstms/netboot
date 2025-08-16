@@ -13,18 +13,64 @@ trap ehandler EXIT
 set -e
 set -x
 
-netboot_update_image() {
+#netboot_update_image() {
+#
+#    echo "Updating preinstalled image..."
+#    mkdir -p /mnt
+#    mount /dev/${_disk}a /mnt
+#    chroot /mnt /bin/sh -c "mount -a"
+#    /rc.package
+#    echo "Update complete."
+#}
+mount_netboot_cdrom() {
+    local _cdrom
+    echo "Disknames: '$(sysctl hw.disknames)'"
+    _cdrom=$(sysctl hw.disknames | sed -n 's/.*[,=]\(cd0\):.*/\1/p;q')
+    echo "Mounting CD-ROM device: $_cdrom"
+    cd /dev
+    . ./MAKEDEV $_cdrom
+    cd /
+    mkdir -p /tmp/cdrom
+    mount /dev/${_cdrom}c /tmp/cdrom
+}
 
-    echo "Updating preinstalled image..."
-    mkdir -p /mnt
-    mount /dev/${_disk}a /mnt
-    chroot /mnt /bin/sh -c "mount -a"
-    /rc.package
-    echo "Update complete."
+umount_netboot_cdrom() {
+    umount /tmp/cdrom
+    rm -rf /tmp/cdrom
+}
+
+install_cdrom_file() {
+    local _src=$1
+    local _dst=$2
+    local _owner=$3
+    local _group=$4
+    local _mode=$5
+    cp /tmp/cdrom/$_src /$_dst
+    chown ${_owner}.${_group} /$_dst
+    chmod $_mode /$_dst
+}
+
+
+install_netboot_cdrom_files() {
+
+    # install env config from cdrom
+    install_cdrom_file netboot.env /netboot.env root wheel 0444
+
+    # replace installer system CA with netboot CA
+    install_cdrom_file keymaster.pem /etc/ssl/cert.pem root wheel 0444
+
+    # install netboot CA and client certs
+    install_cdrom_file keymaster.pem /etc/ssl/keymaster.pem root wheel 0444
+    install_cdrom_file netboot.pem /etc/ssl/netboot.pem root wheel 0444
+    install_cdrom_file netboot.key /etc/ssl/netboot.key root wheel 0444
 }
 
 configure_netboot() {
     local _nbif _mac _disk _iter _url
+
+    mount_netboot_cdrom
+
+    install_netboot_cdrom_files
 
     . /netboot.env
 
@@ -64,21 +110,17 @@ configure_netboot() {
     done
     date -f '%s' $(cat utc)
 
-    echo "Disknames: '$(sysctl hw.disknames)' "
     _disk=$(sysctl hw.disknames | sed -n 's/.*[,=]\([^cr]d0\):.*/\1/p;q')
     echo "Using disk '$_disk'"
-    
     cd /dev
     . ./MAKEDEV $_disk
     cd /
-    ls -al /dev 
-    read foo
 
-    if [ -e /install.image ]; then
-        netboot_update_image
-	trap - EXIT
-	reboot
-    fi
+    #if [ -e /install.image ]; then
+    #    netboot_update_image
+    #	trap - EXIT
+    #	reboot
+    #fi
 
     dd if=/dev/zero of=/dev/${_disk}c count=128
     disklabel -Aw $_disk
@@ -87,8 +129,7 @@ configure_netboot() {
     mount /dev/${_disk}a /usr/local
     
     cd /usr/local
-    ftp ${_url}/gdl/${_gdl_path}
-    tar zxf gdl.tgz
+    tar zxf /tmp/cdrom/gdl.tgz
     chmod 0755 bin/*
     bin/install_gdl
     cd /
@@ -96,11 +137,18 @@ configure_netboot() {
     /usr/local/bin/gdl -ca /etc/ssl/keymaster.pem -cert /etc/ssl/netboot.pem -key /etc/ssl/netboot.key ${_url}/ipxe/${_mac}.response
     mv ${_mac}.response auto_install.conf
 
+    if grep -q 'file:///disklabel_template' auto_install.conf; then 
+	/usr/local/bin/gdl -ca /etc/ssl/keymaster.pem -cert /etc/ssl/netboot.pem -key /etc/ssl/netboot.key ${_url}/ipxe/${_mac}.disk
+	mv ${_mac}.disk /disklabel_template
+    fi
+
     umount /usr/local
     dd if=/dev/zero of=/dev/${_disk}c count=128
     
     ifconfig $_nbif inet -autoconf delete down 2>/dev/null || true
     rm -f /var/db/dhcpleased/$_nbif || true
+
+    umount_netboot_cdrom
 }
 
 configure_netboot

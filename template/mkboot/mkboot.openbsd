@@ -5,49 +5,55 @@
 set -ue
 
 # called as: doas /root/mkboot.openbsd $mac $version $arch $url $src_iso $dst_dir
-echo "Generating OpenBSD boot ISO"
+echo "Generating OpenBSD netboot ISO"
 
+REPO_ROOT=$1
+OSREV=$2
+MACHINE=$3
+MKBOOT_USER=$4
+#SERIAL=
+#if [ $# -gt 5 ]; then
+#    SERIAL=$6
+#fi
 
-DST_ISO=$1
-SRC_ISO=$2
-MAC=$3
-OSREV=$4
-MACHINE=$5
-URL=$6
-MKBOOT_USER=$7
-BOOT_FILES=$8
-SERIAL=
-if [ $# -gt 8 ]; then
-    SERIAL=$9
-fi
-
-# OSREV	    example: 7.5
-# MACHINE   example: amd64
-# SRC_ISO   /var/www/htdocs/pub/OpenBSD/7.5/amd64/cd75.iso
+# argument examples:
 #
+# REPO_ROOT=/home/mkrueger/go/src/github.com/rstms/netboot
+# OSREV=7.5
+# MACHINE=amd64
+# MKBOOT_USER=mkrueger
 
 fail() {
   echo >&2 $0: "$@"
   exit 1
 }
 
-pwd | grep -q '^/tmp' || fail "not running under /tmp"
-[ -n "$MAC" ] || fail "no MAC"
+OS=$(uname)
+case $OS in 
+    OpenBSD) ;;
+    *) fail "OpenBSD is required for this operation";;
+esac 
+
+[ -n "$REPO_ROOT" ] || fail "no REPO_ROOT"
 [ -n "$OSREV" ] || fail "no OSREV (version)"
 [ -n "$MACHINE" ] || "fail no MACHINE (arch)"
-[ -n "$URL" ] || fail "no URL"
-[ -n "$SRC_ISO" ] || fail "no SRC_ISO"
-[ -f "$SRC_ISO" ] || fail "SRC_ISO $SRC_ISO is not a file"
-[ -n "$DST_ISO" ] || fail "no DST_ISO"
-[ -f "$DST_ISO" ] && rm $DST_ISO
+[ -n "$MKBOOT_USER" ] || "fail no MKBOOT_USER"
+
+TAG=$(tr <<<$OSREV -d '.')
+SRC_ISO=$REPO_ROOT/template/dist/openbsd/$OSREV/$MACHINE/cd${TAG}.iso
+DST_ISO=$REPO_ROOT/template/ipxe/openbsd-$OSREV-$MACHINE.iso
+
+DIR=$(mktemp -td netboot-mkboot-openbsd-XXXXXXXXX)
+RD=$DIR/rd
+CD=$DIR/cd
+ISO=$DIR/iso
+MKBOOT=$REPO_ROOT/template/mkboot
 
 echo DST_ISO=$DST_ISO
 echo SRC_ISO=$SRC_ISO
-echo MAC=$MAC
 echo OSREV=$OSREV
 echo MACHINE=$MACHINE
-echo URL=$URL
-echo SERIAL=$SERIAL
+echo MKBOOT_USER=$MKBOOT_USER
 
 vnd0_clear() {
     vnconfig -l | grep -q 'vnd0: not in use'
@@ -78,6 +84,12 @@ cleanup() {
 	umount $mounted
     fi
     vnd2_clear || vnconfig -u vnd2
+
+    if [ -n "$DIR" ]; then
+	if [ -d $DIR ]; then
+	    rm -rf $DIR
+	fi
+    fi
 }
 
 #cleanup
@@ -91,107 +103,69 @@ trap cleanup EXIT
 modify_ramdisk_on_vnd1() {
 
   # mount ramdisk using vnd1
-  vnconfig vnd1 ramdisk.img
-  rm -rf rd
-  mkdir rd
-  mount /dev/vnd1a rd
+  vnconfig vnd1 $DIR/ramdisk.img
+  rm -rf $RD
+  mkdir $RD
+  mount /dev/vnd1a $RD
 
-  # modify ramdisk files
-  cp rc.netboot rd/rc.netboot
-  chown root.wheel rd/rc.netboot
-  chmod 0755 rd/rc.netboot
-  
-  cp rc.package rd/rc.package
-  chown root.wheel rd/rc.package
-  chmod 0755 rd/rc.package
+  # install shims 
+  install -o root -g wheel -m 0755 $MKBOOT/rc.netboot $RD/rc.netboot
+  install -o root -g wheel -m 0755 $MKBOOT/rc.package $RD/rc.package
 
-  echo "_url=${URL}" >rd/netboot.env
-  echo "_mac='${MAC}'" >>rd/netboot.env
-  echo "_gdl_path='${OSREV}/${MACHINE}/gdl.tgz'" >>rd/netboot.env
-  chmod 0644 rd/netboot.env
-
-  # extract /etc/ssl from tarball to ramdisk /etc/ssl
-  tar zxf package.tgz etc/ssl
-
-  # extract /install.image from tarball to ramdisk /
-  if tar zxf package.tgz install.image 2>/dev/null; then
-      echo "Image update script detected."
-      install -o root -g wheel -m 0755 install.image rd/install.image
-  fi
-  
-  # install certs to ramdisk /etc/ssl
-  install -o root -g wheel -m 0444 etc/ssl/keymaster.pem rd/etc/ssl/keymaster.pem
-  install -o root -g wheel -m 0444 etc/ssl/netboot.pem rd/etc/ssl/netboot.pem
-  install -o root -g wheel -m 0400 etc/ssl/netboot.key rd/etc/ssl/netboot.key
-  
-  # replace ramdisk CA with keymaster.pem
-  install -o root -g wheel -m 0444 etc/ssl/keymaster.pem rd/etc/ssl/cert.pem
-
-  # remove tarball etc/ssl dir
-  rm -rf etc
-  
   # add rc.netboot call to ramdisk /.profile
-  awk <rd/.profile '{print $0} /autoinstall -x/{print "\t/rc.netboot"}' >rd/profile
-  mv rd/profile rd/.profile
-  chmod 0755 rd/.profile
+  awk <$RD/.profile '{print $0} /autoinstall -x/{print "\t/rc.netboot"}' >$RD/_profile
+  mv $RD/_profile $RD/.profile
+  chmod 0755 $RD/.profile
   
   # add rc.package call to ramdisk /install.sub
-  awk <rd/install.sub '/exec reboot$/{ print "\t/rc.package" } {print $0}' >rd/_install.sub
-  mv rd/_install.sub rd/install.sub
-  chmod 0755 rd/install.sub
+  awk <$RD/install.sub '/exec reboot$/{ print "\t/rc.package" } {print $0}' >$RD/_install.sub
+  mv $RD/_install.sub $RD/install.sub
+  chmod 0755 $RD/install.sub
 
   # unmount ramdisk
-  umount rd
+  umount $RD
   vnconfig -u vnd1
-  rmdir rd
+  rmdir $RD
 
-}
-
-copy_boot_files() {
-    mkdir cd/files
-    while read file; do
-      cp -v $file cd/files/$(basename $file)
-    done
 }
 
 build_iso() {
 
   # create directory for cd filesystem
-  mkdir -p cd/${OSREV}/${MACHINE}
-  mkdir cd/etc
+  mkdir -p $CD/${OSREV}/${MACHINE}
+  mkdir $CD/etc
   
   # mount source ISO on vnd0 and extract files
-  mkdir iso
+  mkdir $ISO
   vnconfig vnd0 $SRC_ISO
-  mount /dev/vnd0a iso
-  cp iso/${OSREV}/${MACHINE}/bsd* cd/${OSREV}/${MACHINE}/
-  cp iso/${OSREV}/${MACHINE}/cdb* cd/${OSREV}/${MACHINE}/
+  mount /dev/vnd0a $ISO
+  cp ${ISO}/${OSREV}/${MACHINE}/bsd* ${CD}/${OSREV}/${MACHINE}/
+  cp ${ISO}/${OSREV}/${MACHINE}/cdb* ${CD}/${OSREV}/${MACHINE}/
   
   # free up vnd0
-  umount iso
+  umount $ISO
   vnconfig -u vnd0
-  rmdir iso
+  rmdir $ISO
   
   # extract ramdisk from kernel
-  rdsetroot -x cd/${OSREV}/${MACHINE}/bsd.rd ramdisk.img
+  rdsetroot -x ${CD}/${OSREV}/${MACHINE}/bsd.rd $DIR/ramdisk.img
   
-  modify_ramdisk_on_vnd1
+  modify_ramdisk_on_vnd1 $DIR/ramdisk.img
   
-  cp ramdisk.img mod_cd_ramdisk.img
+  # save a copy of the ramdisk image for debugging
+  #cp $DIR/ramdisk.img $DIR/mod_cd_ramdisk.img
   
   # insert modified ramdisk into cd image kernel
-  rdsetroot cd/${OSREV}/${MACHINE}/bsd.rd ramdisk.img
-  rm ramdisk.img
+  rdsetroot ${CD}/${OSREV}/${MACHINE}/bsd.rd $DIR/ramdisk.img
+  rm $DIR/ramdisk.img
   
   # point bootloader at ramdisk kernel
-  echo "set image /${OSREV}/${MACHINE}/bsd.rd" >cd/etc/boot.conf
+  echo "set image /${OSREV}/${MACHINE}/bsd.rd" >$CD/etc/boot.conf
   
   # optionally enable serial
-  if [ -n "$SERIAL" ]; then
-    echo "set tty $SERIAL" >>cd/etc/boot.conf
-  fi
-
-  copy_boot_files <$BOOT_FILES
+  #if [ -n "$SERIAL" ]; then
+  #  echo "set tty $SERIAL" >>$CD/etc/boot.conf
+  #fi
   
   # build the iso
   mkhybrid -a -R -T -L -l -d -D -N -o $DST_ISO \
@@ -201,10 +175,10 @@ build_iso() {
   	    -V "OpenBSD/${MACHINE}   ${OSREV} netboot CD" \
   	    -b ${OSREV}/${MACHINE}/cdbr \
               -c ${OSREV}/${MACHINE}/boot.catalog \
-  	    cd
+  	    $CD
 }
 
 build_iso
-chown -R $MKBOOT_USER.$MKBOOT_USER .
+chown -R $MKBOOT_USER.$MKBOOT_USER $DIR
+chown $MKBOOT_USER.$MKBOOT_USER $DST_ISO
 chmod 0660 $DST_ISO
-ls -al $DST_ISO

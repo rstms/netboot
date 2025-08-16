@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -ueo pipefail
+version=$1
+arch=$2
+repo=/home/mkrueger/go/src/github.com/rstms/netboot
+user=$USER
+doas $repo/template/mkboot/mkboot.openbsd $repo $version $arch $user

@@ -9,6 +9,34 @@ trap ehandler EXIT
     
 set -e
 
+mount_netboot_cdrom() {
+    local _cdrom
+    echo "Disknames: '$(sysctl hw.disknames)'"
+    _cdrom=$(sysctl hw.disknames | sed -n 's/.*[,=]\(cd0\):.*/\1/p;q')
+    echo "Mounting CD-ROM device: $_cdrom"
+    cd /dev
+    . ./MAKEDEV $_cdrom
+    cd /
+    mkdir -p /tmp/cdrom
+    mount /dev/${_cdrom}c /tmp/cdrom
+}
+
+umount_netboot_cdrom() {
+    umount /tmp/cdrom
+    rm -rf /tmp/cdrom
+}
+
+install_cdrom_file() {
+    local _src=$1
+    local _dst=$2
+    local _owner=$3
+    local _group=$4
+    local _mode=$5
+    cp /tmp/cdrom/$_src /$_dst
+    chown ${_owner}.${_group} /$_dst
+    chmod $_mode /$_dst
+}
+
 install_site_package() {
     local _mac
     local _url
@@ -19,6 +47,7 @@ install_site_package() {
 	echo "Using existing gdl:"
 	ls -l /mnt/usr/local/bin/gdl
     else 
+	mount_netboot_cdrom
 	echo "Downloading ${_url}/gdl.tgz..."
 	cd /mnt/usr/local/bin
 	ftp ${_url}/gdl.tgz
