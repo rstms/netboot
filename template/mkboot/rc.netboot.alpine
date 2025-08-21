@@ -1,0 +1,41 @@
+#!/bin/sh
+
+# alpine rc.netboot
+# included in MAC.apkovl.tgz as /etc/local.d/auto-setup-alpine.start
+
+echo >>/dev/console "Executing /rc.netboot ($0)"
+
+# mount cdrom
+mkdir /cdrom
+mount -t iso9660 -o ro /dev/cdrom /cdrom 
+
+. /cdrom/netboot.env
+
+if [ -z "$_quiet" ]; then
+    exec 1>>/dev/console 2>&1
+fi 
+
+if [ -n "$_debug" ]; then
+    set -x
+fi
+
+# install curl
+apk add curl
+
+# download /ipxe/MAC.postinstall as /postinstall 
+curl ${_certs} ${_url}/ipxe/${_mac}.postinstall -o /postinstall
+chmod 0700 /postinstall
+
+# run only once
+rm -f /etc/local.d/auto-setup-alpine.start
+
+/postinstall
+postinstall_exit=$?
+
+if [ $postinstall_exit != 0 ]; then
+    echo "rc.netboot: /postinstall failed with exit code $postinstall_exit"
+    echo "rebooting in 30 seconds..."
+    sleep 30
+fi
+
+/sbin/reboot

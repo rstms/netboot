@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 )
 
 func IsFileFS(filesystem fs.FS, pathname string) bool {
@@ -96,4 +97,77 @@ func ExtractTarballFile(dstPath, srcPath, tarPath string) error {
 		}
 	}
 	return Fatal(os.ErrNotExist)
+}
+
+func WriteTarball(dstPath, srcDir string, chownRoot bool) error {
+	log.Printf("WriteTarball(%s, %s)\n", dstPath, srcDir)
+	tarFile, err := os.Create(dstPath)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer tarFile.Close()
+	gzWriter := gzip.NewWriter(tarFile)
+	defer gzWriter.Close()
+	tarWriter := tar.NewWriter(gzWriter)
+	defer tarWriter.Close()
+	err = filepath.WalkDir(srcDir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == srcDir {
+			return nil
+		}
+		tarpath, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return Fatal(err)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return Fatal(err)
+		}
+		var link string
+		if entry.Type()&fs.ModeSymlink != 0 {
+			link, err = os.Readlink(path)
+			if err != nil {
+				return Fatal(err)
+			}
+		}
+		header, err := tar.FileInfoHeader(info, link)
+		if err != nil {
+			return Fatal(err)
+		}
+		header.Name = tarpath
+		if chownRoot {
+			header.Uid = 0
+			header.Uname = "root"
+			header.Gid = 0
+			header.Gname = "wheel"
+		}
+		err = tarWriter.WriteHeader(header)
+		if err != nil {
+			return Fatal(err)
+		}
+		if entry.Type().IsRegular() {
+			err := func() error {
+				src, err := os.Open(path)
+				if err != nil {
+					return Fatal(err)
+				}
+				defer src.Close()
+				_, err = io.Copy(tarWriter, src)
+				if err != nil {
+					return Fatal(err)
+				}
+				return nil
+			}()
+			if err != nil {
+				return Fatal(err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return Fatal(err)
+	}
+	return nil
 }

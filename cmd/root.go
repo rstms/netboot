@@ -82,4 +82,5 @@ func init() {
 	OptionString(rootCmd, "http-port", "p", server.DEFAULT_HTTP_PORT, "http listen port")
 	OptionString(rootCmd, "https-port", "P", server.DEFAULT_HTTPS_PORT, "https listen port")
 	OptionSwitch(rootCmd, "foreground", "f", "run in foreground")
+	OptionSwitch(rootCmd, "enable-proxy", "", "enable http proxy")
 }

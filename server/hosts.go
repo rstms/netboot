@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -20,9 +21,10 @@ import (
 	"time"
 )
 
+// mirrors used by netboot proxy feature
 const DEFAULT_DEBIAN_MIRROR = "http://ftp.us.debian.org"
 const DEFAULT_DEBIAN_SECURITY_MIRROR = "http://security.debian.org"
-const DEFAULT_OPENBSD_MIRROR = "https://mirrors.mit.edu"
+const DEFAULT_OPENBSD_MIRROR = "http://mirrors.mit.edu"
 const DEFAULT_ALPINE_MIRROR = "https://dl-cdn.alpinelinux.org"
 
 type Config struct {
@@ -31,9 +33,12 @@ type Config struct {
 	Version           string `json:"version"`
 	Arch              string `json:"arch"`
 	Serial            string `json:"serial"`
+	Mirror            string `json:"mirror"`
 	Response          string `json:"response"`
 	DisklabelTemplate string `json:"disklabel_template"`
 	KernelParams      string `json:"kernel_params"`
+	Debug             bool   `json:"debug"`
+	Quiet             bool   `json:"quiet"`
 }
 
 type Host struct {
@@ -68,6 +73,8 @@ type DeleteResponse struct {
 var MAC_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`)
 var IPXE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\.ipxe$`)
 var TARBALL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\.tgz$`)
+var ALPINE_VERSION_PATTERN = regexp.MustCompile(`([0-9][0-9]*)\.([0-9][0-9]*)\.([0-9][0-9]*)$`)
+var APKOVL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\.apkovl\.tar\.gz$`)
 
 const htmlPrefix = `
 <!DOCTYPE html>
@@ -92,6 +99,7 @@ type HostCache struct {
 	cache     map[string]string
 	httpPort  int
 	httpsPort int
+	proxy     bool
 }
 
 func NewHostCache(dir string) (*HostCache, error) {
@@ -158,33 +166,27 @@ func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, co
 		line := scanner.Text()
 		var err error
 		switch {
-		// FIXME: need an alpine case
-
-		//case strings.HasPrefix(line, "chain --replace "):
-		//	_, err = fmt.Fprintf(dst, "chain --replace %s/ipxe/${net0/mac}.ipxe || error", url)
-
-		/*
-			case strings.HasPrefix(line, "sanboot "):
-				// openbsd IPXE menu
-				versionTag := strings.ReplaceAll(config.Version, ".", "")
-				_, err = fmt.Fprintf(dst, "sanboot %s/pub/OpenBSD/%s/%s/netboot%s.img", url, config.Version, config.Arch, versionTag)
-		*/
-
-		case strings.HasPrefix(line, "set debian_mirror "):
-			// debian IPXE menu
-			_, err = fmt.Fprintf(dst, "set debian_mirror %s\n", url)
-		case strings.HasPrefix(line, "set netboot_http "):
-			// openbsd IPXE menu
-			_, err = fmt.Fprintf(dst, "set netboot_http %s\n", httpUrl)
 		case strings.HasPrefix(line, "set netboot "):
-			// debian IPXE menu
 			_, err = fmt.Fprintf(dst, "set netboot %s\n", url)
+		case strings.HasPrefix(line, "set sanboot "):
+			_, err = fmt.Fprintf(dst, "set sanboot %s\n", httpUrl)
 		case strings.HasPrefix(line, "set kernel_params"):
-			// debian IPXE menu
 			_, err = fmt.Fprintf(dst, "set kernel_params %s\n", config.KernelParams)
 		case strings.HasPrefix(line, "set serial_params"):
-			// debian serial kernal params
 			_, err = fmt.Fprintf(dst, "set serial_params %s\n", config.Serial)
+		case strings.HasPrefix(line, "set mirror"):
+			_, err = fmt.Fprintf(dst, "set mirror %s\n", config.Mirror)
+		case strings.HasPrefix(line, "set branch"):
+			match := ALPINE_VERSION_PATTERN.FindStringSubmatch(config.Version)
+			if len(match) != 4 {
+				return Fatalf("unexpected alpine version format: %s\n", config.Version)
+			}
+			branch := fmt.Sprintf("v%s.%s", match[1], match[2])
+			_, err = fmt.Fprintf(dst, "set branch %s\n", branch)
+		case strings.HasPrefix(line, "set version"):
+			_, err = fmt.Fprintf(dst, "set version %s\n", config.Version)
+		case strings.HasPrefix(line, "set arch"):
+			_, err = fmt.Fprintf(dst, "set arch %s\n", config.Arch)
 		default:
 			_, err = dst.Write([]byte(line + "\n"))
 		}
@@ -199,23 +201,42 @@ func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, co
 	return nil
 }
 
-func requireClientCert(w http.ResponseWriter, r *http.Request) bool {
-	cert := checkClientCert(w, r)
-	if cert == nil {
-		Warning("Request [CN=MISSING] %s %s %s\n", r.RemoteAddr, r.Method, r.URL.Path)
-		fail(w, "authorization failed", http.StatusForbidden)
-		return false
-	}
-	log.Printf("Request: [%s] %s %s %s\n", cert.Subject, r.RemoteAddr, r.Method, r.URL.Path)
+// return value for possible client access list validation
+func (c *HostCache) validateHttpRequest(w http.ResponseWriter, r *http.Request) bool {
+	log.Printf("Request: HTTP %s %s %s\n", r.RemoteAddr, r.Method, r.URL)
 	return true
 }
 
-func checkClientCert(w http.ResponseWriter, r *http.Request) *x509.Certificate {
+func (c *HostCache) requireClientCert(w http.ResponseWriter, r *http.Request) bool {
+	cert := c.checkClientCert(w, r)
+	clientCN := "<no_client_cert>"
+	if cert != nil {
+		clientCN = cert.Subject.String()
+	}
+	log.Printf("Request: TLS %s %s %s %s\n", clientCN, r.RemoteAddr, r.Method, r.URL.Path)
+	if cert == nil {
+		Warning("Missing client certificate: %s %s %s", r.RemoteAddr, r.Method, r.URL)
+		fail(w, "authorization failed", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+func (c *HostCache) optionalClientCert(w http.ResponseWriter, r *http.Request) *x509.Certificate {
+	cert := c.checkClientCert(w, r)
+	clientCN := "<no_client_cert>"
+	if cert != nil {
+		clientCN = cert.Subject.String()
+	}
+	log.Printf("Request: TLS %s %s %s %s\n", clientCN, r.RemoteAddr, r.Method, r.URL.Path)
+	return cert
+}
+
+func (c *HostCache) checkClientCert(w http.ResponseWriter, r *http.Request) *x509.Certificate {
 	switch {
 	case r.TLS == nil:
 	case r.TLS.PeerCertificates == nil || len(r.TLS.PeerCertificates) < 1:
 	default:
-		//log.Printf("validated client certificate: %s\n", clientCert.Subject)
 		return r.TLS.PeerCertificates[0]
 	}
 	return nil
@@ -234,16 +255,28 @@ func respond(w http.ResponseWriter, response any) {
 }
 
 func (c *HostCache) RootHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Request: %s %s %s\n", r.RemoteAddr, r.Method, r.URL)
+	if !c.validateHttpRequest(w, r) {
+		return
+	}
+	c.rootHandler(w, r)
+}
+
+func (c *HostCache) RootHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
+	c.rootHandler(w, r)
+}
+
+func (c *HostCache) rootHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/ipxe.png":
-		http.ServeFile(w, r, filepath.Join(c.cacheDir, "ipxe.png"))
+		http.ServeFile(w, r, filepath.Join(c.ipxeDir, "ipxe.png"))
 		return
 	}
 	fail(w, "forbidden", http.StatusForbidden)
 }
 
-func (c *HostCache) VersionHandler(w http.ResponseWriter, r *http.Request) {
+func (c *HostCache) VersionHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
 	_, err := w.Write([]byte(htmlPrefix + fmt.Sprintf("netboot server v%s", Version) + htmlSuffix))
 	if err != nil {
 		Warning("%v", Fatal(err))
@@ -253,7 +286,18 @@ func (c *HostCache) VersionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *HostCache) UTCHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Request: %s %s %s\n", r.RemoteAddr, r.Method, r.URL)
+	if !c.validateHttpRequest(w, r) {
+		return
+	}
+	c.utcHandler(w, r)
+}
+
+func (c *HostCache) UTCHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
+	c.utcHandler(w, r)
+}
+
+func (c *HostCache) utcHandler(w http.ResponseWriter, r *http.Request) {
 	epochTime := time.Now().Unix()
 	w.Header().Set("Content-Disposition", "attachment; filename=utc")
 	w.Header().Set("Content-Type", "text/plain")
@@ -261,8 +305,8 @@ func (c *HostCache) UTCHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Response:  [200] %d\n", epochTime)
 }
 
-func (c *HostCache) GDLHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Request: %s %s %s\n", r.RemoteAddr, r.Method, r.URL)
+func (c *HostCache) GDLHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
 	version := r.PathValue("version")
 	arch := r.PathValue("arch")
 	file := r.PathValue("file")
@@ -283,9 +327,9 @@ func (c *HostCache) GDLHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFileFS(w, r, template.Dist, gdlPathname)
 }
 
-func (c *HostCache) checkIpxePath(w http.ResponseWriter, r *http.Request) (string, bool) {
+func (c *HostCache) checkPath(prefix string, w http.ResponseWriter, r *http.Request) (string, bool) {
 	dir, name := path.Split(r.URL.Path)
-	if dir != "/ipxe/" {
+	if dir != prefix {
 		fail(w, "invalid path", http.StatusBadRequest)
 		return "", false
 
@@ -301,51 +345,65 @@ func (c *HostCache) checkIpxePath(w http.ResponseWriter, r *http.Request) (strin
 		fail(w, "invalid path", http.StatusBadRequest)
 		return "", false
 	}
+	if APKOVL_PATTERN.MatchString(base) {
+		ext = "apkovl.tar.gz"
+	}
 	return strings.ToLower(ext), true
 }
 
-func (c *HostCache) IPXEHandler(w http.ResponseWriter, r *http.Request) {
-	c.ipxeHandler("http", w, r)
-}
-
-func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
-	c.ipxeHandler("https", w, r)
-}
-
-func (c *HostCache) ipxeHandler(scheme string, w http.ResponseWriter, r *http.Request) {
-	cert := checkClientCert(w, r)
-	clientCN := "no_cert"
-	if cert != nil {
-		clientCN = cert.Subject.String()
+func (c *HostCache) SanBootHandler(w http.ResponseWriter, r *http.Request) {
+	if !c.validateHttpRequest(w, r) {
+		return
 	}
-	log.Printf("Request: [%s] %s %s %s %s\n", clientCN, r.RemoteAddr, scheme, r.Method, r.URL.Path)
-
-	ext, ok := c.checkIpxePath(w, r)
+	ext, ok := c.checkPath("/san/", w, r)
 	if !ok {
 		return
 	}
 	switch ext {
-	case "boot":
-	case "iso", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "apkvol.tar.gz", "cacerts", "postinstall":
-		if scheme != "https" {
-			Warning("TLS required for extension: %s", ext)
-			fail(w, fmt.Sprintf("TLS connection required"), http.StatusBadRequest)
-			return
-		}
-		if cert == nil {
-			Warning("missing certificate")
-			fail(w, fmt.Sprintf("authorization failed"), http.StatusForbidden)
-			return
-		}
-	default:
-		Warning("unexpected extension: %s", r.URL.Path)
-		fail(w, "invalid path", http.StatusBadRequest)
+	case "boot", "modloop", "apkovl.tar.gz":
+		// IPXE sanboot command from the OpenBSD autoexec.ipxe
+		// FIXME: verify that this request follows a very recent client-cert validated request for MAC.iso from the same source
+		// it is possible that the ipxe client will be reusing the same session - see if we can set a cookie and check for it
+		http.ServeFile(w, r, filepath.Join(c.cacheDir, strings.ReplaceAll(r.URL.Path, "/san/", "/ipxe/")))
 		return
 	}
-	http.ServeFile(w, r, filepath.Join(c.cacheDir, r.URL.Path))
+	Warning("unexpected sanboot request: %s", r.URL.Path)
+	fail(w, "invalid path", http.StatusBadRequest)
 }
 
-func (c *HostCache) proxy(mirror string, w http.ResponseWriter, r *http.Request) {
+func (c *HostCache) PNGHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	http.ServeFileFS(w, r, template.Ipxe, "/ipxe/netboot.png")
+}
+
+func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	ext, ok := c.checkPath("/ipxe/", w, r)
+	if !ok {
+		return
+	}
+	switch ext {
+	case "iso", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "postinstall":
+		http.ServeFile(w, r, filepath.Join(c.cacheDir, r.URL.Path))
+		return
+	}
+	Warning("unexpected ipxe request: %s", r.URL.Path)
+	fail(w, "invalid path", http.StatusBadRequest)
+}
+
+func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.Request) {
+
+	if !c.proxy {
+		Warning("disabled proxy received request: %s", mirror)
+		fail(w, "netboot proxy disabled", http.StatusNotImplemented)
+		return
+	}
+
+	// FIXME: add mechanism for verifying cached assets are in sync with distribution mirrors
 
 	if !IsDir(c.distDir) {
 		err := os.MkdirAll(c.distDir, 0700)
@@ -368,37 +426,80 @@ func (c *HostCache) proxy(mirror string, w http.ResponseWriter, r *http.Request)
 		fail(w, "no mirror configured", http.StatusNotImplemented)
 		return
 	}
-	pathname, err := DownloadFileRoot(cacheRoot, mirrorUrl, r.URL.Path)
+	pathname, data, err := DownloadFileRoot(cacheRoot, mirrorUrl, r.URL.Path)
 	if err != nil {
-		Warning("Download '%s' failed: %v", r.URL.Path, err)
-		fail(w, err.Error(), http.StatusBadRequest)
+		Warning("Proxy '%s' failed: %v", r.URL.Path, err)
+		fail(w, "proxy failure", http.StatusBadGateway)
 		return
 	}
-	http.ServeFileFS(w, r, cacheRoot.FS(), pathname)
+	switch {
+	case pathname != "":
+		http.ServeFileFS(w, r, cacheRoot.FS(), pathname)
+		return
+	case len(data) > 0:
+		buf := bytes.NewBuffer(data)
+		count, err := io.Copy(w, buf)
+		if err != nil {
+			Warning("%v", Fatal(err))
+			fail(w, "failed writing response", http.StatusInternalServerError)
+			return
+		}
+		log.Printf("Relayed %d bytes\n", count)
+		return
+	}
+	Warning("DownloadFileRoot returned no data for '%s'", r.URL.Path)
 }
 
 func (c *HostCache) DebianHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Request: %s %s %s\n", r.RemoteAddr, r.Method, r.URL)
-	c.proxy("debian", w, r)
+	if !c.validateHttpRequest(w, r) {
+		return
+	}
+	c.proxyHandler("debian", w, r)
+}
+
+func (c *HostCache) DebianHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
+	c.proxyHandler("debian", w, r)
 }
 
 func (c *HostCache) DebianSecurityHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Request: %s %s %s\n", r.RemoteAddr, r.Method, r.URL)
-	c.proxy("debian-security", w, r)
+	if !c.validateHttpRequest(w, r) {
+		return
+	}
+	c.proxyHandler("debian-security", w, r)
+}
+
+func (c *HostCache) DebianSecurityHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
+	c.proxyHandler("debian-security", w, r)
 }
 
 func (c *HostCache) OpenBSDHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Request: %s %s %s\n", r.RemoteAddr, r.Method, r.URL)
-	c.proxy("openbsd", w, r)
+	if !c.validateHttpRequest(w, r) {
+		return
+	}
+	c.proxyHandler("openbsd", w, r)
+}
+
+func (c *HostCache) OpenBSDHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
+	c.proxyHandler("openbsd", w, r)
 }
 
 func (c *HostCache) AlpineHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Request: %s %s %s\n", r.RemoteAddr, r.Method, r.URL)
-	c.proxy("alpine", w, r)
+	if !c.validateHttpRequest(w, r) {
+		return
+	}
+	c.proxyHandler("alpine", w, r)
 }
 
-func (c *HostCache) UploadPackageHandler(w http.ResponseWriter, r *http.Request) {
-	if !requireClientCert(w, r) {
+func (c *HostCache) AlpineHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
+	c.proxyHandler("alpine", w, r)
+}
+
+func (c *HostCache) UploadPackageHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
 		return
 	}
 
@@ -459,8 +560,8 @@ func (c *HostCache) mkURLs(r *http.Request) (string, string) {
 	return httpsURL, httpURL
 }
 
-func (c *HostCache) AddHostHandler(w http.ResponseWriter, r *http.Request) {
-	if !requireClientCert(w, r) {
+func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
 		return
 	}
 	var config Config
@@ -477,6 +578,7 @@ func (c *HostCache) AddHostHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("adding host %s %s %s\n", config.Address, config.OS, config.Version)
 
+	log.Printf("AddHostHandler setting MAC=%s IP=''\n", config.Address)
 	c.cache[config.Address] = ""
 
 	// FIXME: check that OS Version is supported
@@ -492,7 +594,7 @@ func (c *HostCache) AddHostHandler(w http.ResponseWriter, r *http.Request) {
 	netbootURL, netbootHttpURL := c.mkURLs(r)
 
 	// create temp directory for files used to generate EFI image and ISO
-	tempDir, err := os.MkdirTemp("", "netboot-iso-*")
+	tempDir, err := os.MkdirTemp("", "netboot-*")
 	if err != nil {
 		Warning("%v", Fatal(err))
 		fail(w, "failed generating netboot files", http.StatusInternalServerError)
@@ -505,7 +607,7 @@ func (c *HostCache) AddHostHandler(w http.ResponseWriter, r *http.Request) {
 
 	// IPXE menu: <TEMP_DIR>/autoexec.ipxe (to be ebedded in ISO)
 	autoexec := filepath.Join(tempDir, "autoexec.ipxe")
-	err = c.expandIpxeFile(autoexec, "rstms-netboot-"+config.OS+".ipxe", netbootURL, netbootHttpURL, &config)
+	err = c.expandIpxeFile(autoexec, config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config)
 	if err != nil {
 		Warning("%v", Fatal(err))
 		fail(w, "failed generating ipxe menu", http.StatusInternalServerError)
@@ -546,11 +648,11 @@ func (c *HostCache) AddHostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// tarball: /ipxe/MAC.tgz
-	tarballPathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.tgz", config.Address))
-	addBootFile(tempDir, "package.tgz", tarballPathname, bootFiles)
+	//tarballPathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.tgz", config.Address))
+	//addBootFile(tempDir, "package.tgz", tarballPathname, bootFiles)
 
 	// netboot: /ipxe/MAC.iso
-	isoFile, err := c.GenerateISO(tempDir, netbootURL, bootFiles, &config)
+	isoFile, err := c.GenerateISO(tempDir, netbootURL, netbootHttpURL, bootFiles, &config)
 	if err != nil {
 		Warning("%v", Fatal(err))
 		fail(w, "failed generating boot ISO", http.StatusInternalServerError)
@@ -573,7 +675,7 @@ func (c *HostCache) deleteHostFiles(address string) ([]string, error) {
 		return []string{}, Fatal(err)
 	}
 	address = strings.ReplaceAll(strings.ToLower(address), ":", "[:-]")
-	pattern, err := regexp.Compile(fmt.Sprintf("^%s.*$", address))
+	pattern, err := regexp.Compile(fmt.Sprintf(`^%s\..*$`, address))
 	if err != nil {
 		return []string{}, Fatal(err)
 	}
@@ -591,8 +693,8 @@ func (c *HostCache) deleteHostFiles(address string) ([]string, error) {
 	return deletedFiles, nil
 }
 
-func (c *HostCache) DeleteHostHandler(w http.ResponseWriter, r *http.Request) {
-	if !requireClientCert(w, r) {
+func (c *HostCache) DeleteHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
 		return
 	}
 	var request Host
@@ -606,6 +708,7 @@ func (c *HostCache) DeleteHostHandler(w http.ResponseWriter, r *http.Request) {
 		fail(w, "invalid MAC address", http.StatusBadRequest)
 		return
 	}
+	log.Printf("DeleteHostHandler setting MAC=%s IP=''\n", request.Address)
 	c.cache[request.Address] = ""
 	c.deleteAddressFiles(request.Address, w)
 }
@@ -635,31 +738,32 @@ func (c *HostCache) deleteAddressFiles(inAddress string, w http.ResponseWriter) 
 	return
 }
 
-func (c *HostCache) HostBootedHandler(w http.ResponseWriter, r *http.Request) {
-	if !requireClientCert(w, r) {
+func (c *HostCache) HostBootedHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
 		return
 	}
-	segments := strings.Split(r.URL.Path, "/")
-	if len(segments) > 3 {
-		address := segments[3]
-		if len(segments) > 4 {
-			ip := segments[4]
-			c.cache[address] = ip
-		}
+	address := r.PathValue("mac")
+	ip := r.PathValue("ip")
+	switch {
+	case address == "":
+	case ip == "":
+	default:
+		log.Printf("HostBootedHandler setting MAC=%s IP=%s\n", address, ip)
+		c.cache[address] = ip
 		c.deleteAddressFiles(address, w)
 		return
-
 	}
 	fail(w, "invalid path", http.StatusBadRequest)
 }
 
-func (c *HostCache) HostAddressQueryHandler(w http.ResponseWriter, r *http.Request) {
-	if !requireClientCert(w, r) {
+func (c *HostCache) HostAddressQueryHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
 		return
 	}
 	segments := strings.Split(r.URL.Path, "/")
 	if len(segments) > 3 {
 		address := segments[3]
+		log.Printf("HostAddressQueryHandler returning MAC=%s IP=%s\n", address, c.cache[address])
 		respond(w, HostAddressResponse{MAC: address, IP: c.cache[address]})
 		return
 	}
@@ -682,8 +786,8 @@ func (c *HostCache) hostAddresses() ([]string, error) {
 	return addresses, nil
 }
 
-func (c *HostCache) ListHostsHandler(w http.ResponseWriter, r *http.Request) {
-	if !requireClientCert(w, r) {
+func (c *HostCache) ListHostsHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
 		return
 	}
 	addresses, err := c.hostAddresses()
@@ -696,11 +800,11 @@ func (c *HostCache) ListHostsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Generate a url-customized netboot ISO returning generated iso pathname
-func (c *HostCache) GenerateISO(tempDir, url string, bootFiles []string, config *Config) (string, error) {
+func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, bootFiles []string, config *Config) (string, error) {
 
 	log.Printf("Generating netboot ISO for %s with URL %s\n", config.Address, url)
 
-	tarball := filepath.Join(tempDir, "package.tgz")
+	tarball := filepath.Join(c.ipxeDir, config.Address+".tgz")
 
 	// add root CA from tarball to bootFiles
 	clientCA := filepath.Join(tempDir, "keymaster.pem")
@@ -726,16 +830,40 @@ func (c *HostCache) GenerateISO(tempDir, url string, bootFiles []string, config 
 	}
 	bootFiles = append(bootFiles, clientKey)
 
-	// extract tarball postinstall to temp dir for debian mkboot
-	postinstall := filepath.Join(tempDir, "postinstall")
-	err = ExtractTarballFile(postinstall, "postinstall", tarball)
+	// extract tarball netboot_exec to temp dir for iso
+	netbootExec := filepath.Join(tempDir, "netboot_exec")
+	err = ExtractTarballFile(netbootExec, "root/netboot_exec", tarball)
 	if err != nil {
 		return "", Fatal(err)
 	}
+	bootFiles = append(bootFiles, netbootExec)
 
-	// write netboot.env to temp dir for openbsd mkboot
-	netbootEnvData := fmt.Sprintf("_url=%s\n_mac=%s\n", url, config.Address)
-	err = os.WriteFile(filepath.Join(tempDir, "netboot.env"), []byte(netbootEnvData), 0644)
+	// write netboot.env to temp dir for iso
+	netbootEnvFile := filepath.Join(tempDir, "netboot.env")
+	var netbootEnv string
+	netbootEnv += fmt.Sprintf("_url=%s\n", url)
+	netbootEnv += fmt.Sprintf("_mac=%s\n", config.Address)
+	netbootEnv += fmt.Sprintf("_certs='--cacert /cdrom/keymaster.pem --cert /cdrom/netboot.pem --key /cdrom/netboot.key'\n")
+	if config.Debug {
+		netbootEnv += "_debug=1\n"
+	} else {
+		netbootEnv += "_debug=\n"
+	}
+	if config.Quiet {
+		netbootEnv += "_quiet=1\n"
+	} else {
+		netbootEnv += "_quiet=\n"
+	}
+	err = os.WriteFile(netbootEnvFile, []byte(netbootEnv), 0644)
+	if err != nil {
+		return "", Fatal(err)
+	}
+	bootFiles = append(bootFiles, netbootEnvFile)
+
+	// extract tarball postinstall to temp dir for debian mkboot
+	// NOTE: intentionally not added to bootFiles
+	postinstall := filepath.Join(tempDir, "postinstall")
+	err = ExtractTarballFile(postinstall, "postinstall", tarball)
 	if err != nil {
 		return "", Fatal(err)
 	}

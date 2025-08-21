@@ -21,8 +21,9 @@ $(program): build
 
 gen: $(generated_template_files)
 
-gen-clean:
+regen: 
 	rm -f $(generated_template_files)
+	$(MAKE) gen
 
 build: fmt gen
 	fix go build . ./...
@@ -89,13 +90,13 @@ $(keymaster): /etc/ssl/keymaster.pem
 $(debian_cacerts): $(keymaster)
 	scripts/hash_debian_cacerts
 
-template/ipxe/openbsd-7.5-amd64.iso: template/dist/openbsd/7.5/amd64/cd75.iso
+template/ipxe/openbsd-7.5-amd64.iso: template/dist/openbsd/7.5/amd64/cd75.iso $(wildcard template/mkboot/*.openbsd)
 	scripts/generate_openbsd_netboot_iso 7.5 amd64
 
-template/ipxe/openbsd-7.6-amd64.iso: template/dist/openbsd/7.6/amd64/cd76.iso
+template/ipxe/openbsd-7.6-amd64.iso: template/dist/openbsd/7.6/amd64/cd76.iso $(wildcard template/mkboot/*.openbsd)
 	scripts/generate_openbsd_netboot_iso 7.6 amd64
 
-template/ipxe/openbsd-7.7-amd64.iso: template/dist/openbsd/7.7/amd64/cd77.iso
+template/ipxe/openbsd-7.7-amd64.iso: template/dist/openbsd/7.7/amd64/cd77.iso $(wildcard template/mkboot/*.openbsd)
 	scripts/generate_openbsd_netboot_iso 7.7 amd64
 
 run:

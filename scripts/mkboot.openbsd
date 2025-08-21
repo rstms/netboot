@@ -11,6 +11,7 @@ REPO_ROOT=$1
 OSREV=$2
 MACHINE=$3
 MKBOOT_USER=$4
+
 #SERIAL=
 #if [ $# -gt 5 ]; then
 #    SERIAL=$6
@@ -42,18 +43,19 @@ esac
 TAG=$(tr <<<$OSREV -d '.')
 SRC_ISO=$REPO_ROOT/template/dist/openbsd/$OSREV/$MACHINE/cd${TAG}.iso
 DST_ISO=$REPO_ROOT/template/ipxe/openbsd-$OSREV-$MACHINE.iso
+DST_RD=$REPO_ROOT/template/ipxe/bsd-$OSREV-$MACHINE.rd
+RC_NETBOOT=$REPO_ROOT/template/mkboot/rc.netboot.openbsd
 
 DIR=$(mktemp -td netboot-mkboot-openbsd-XXXXXXXXX)
 RD=$DIR/rd
 CD=$DIR/cd
 ISO=$DIR/iso
-MKBOOT=$REPO_ROOT/template/mkboot
 
-echo DST_ISO=$DST_ISO
-echo SRC_ISO=$SRC_ISO
-echo OSREV=$OSREV
-echo MACHINE=$MACHINE
-echo MKBOOT_USER=$MKBOOT_USER
+#echo DST_ISO=$DST_ISO
+#echo SRC_ISO=$SRC_ISO
+#echo OSREV=$OSREV
+#echo MACHINE=$MACHINE
+#echo MKBOOT_USER=$MKBOOT_USER
 
 vnd0_clear() {
     vnconfig -l | grep -q 'vnd0: not in use'
@@ -108,17 +110,16 @@ modify_ramdisk_on_vnd1() {
   mkdir $RD
   mount /dev/vnd1a $RD
 
-  # install shims 
-  install -o root -g wheel -m 0755 $MKBOOT/rc.netboot $RD/rc.netboot
-  install -o root -g wheel -m 0755 $MKBOOT/rc.package $RD/rc.package
+  # add netboot autoinstall shim to ramdisk
+  install -o root -g wheel -m 0755 $RC_NETBOOT $RD/rc.netboot
 
-  # add rc.netboot call to ramdisk /.profile
-  awk <$RD/.profile '{print $0} /autoinstall -x/{print "\t/rc.netboot"}' >$RD/_profile
+  # add rc.netboot pre_install call to ramdisk /.profile
+  awk <$RD/.profile '{print $0} /autoinstall -x/{print "\t/rc.netboot pre_install"}' >$RD/_profile
   mv $RD/_profile $RD/.profile
   chmod 0755 $RD/.profile
   
-  # add rc.package call to ramdisk /install.sub
-  awk <$RD/install.sub '/exec reboot$/{ print "\t/rc.package" } {print $0}' >$RD/_install.sub
+  # add rc.netboot post_install call to ramdisk /install.sub
+  awk <$RD/install.sub '/exec reboot$/{ print "\t/rc.netboot post_install" } {print $0}' >$RD/_install.sub
   mv $RD/_install.sub $RD/install.sub
   chmod 0755 $RD/install.sub
 
@@ -152,12 +153,11 @@ build_iso() {
   
   modify_ramdisk_on_vnd1 $DIR/ramdisk.img
   
-  # save a copy of the ramdisk image for debugging
-  #cp $DIR/ramdisk.img $DIR/mod_cd_ramdisk.img
-  
   # insert modified ramdisk into cd image kernel
   rdsetroot ${CD}/${OSREV}/${MACHINE}/bsd.rd $DIR/ramdisk.img
-  rm $DIR/ramdisk.img
+
+  # copy bsd ramdisk to IPXE output dir
+  cp ${CD}/${OSREV}/${MACHINE}/bsd.rd $DST_RD
   
   # point bootloader at ramdisk kernel
   echo "set image /${OSREV}/${MACHINE}/bsd.rd" >$CD/etc/boot.conf
@@ -182,3 +182,4 @@ build_iso
 chown -R $MKBOOT_USER.$MKBOOT_USER $DIR
 chown $MKBOOT_USER.$MKBOOT_USER $DST_ISO
 chmod 0660 $DST_ISO
+ls -l $DST_ISO

@@ -2,6 +2,6 @@
 set -ueo pipefail
 version=$1
 arch=$2
-repo=/home/mkrueger/go/src/github.com/rstms/netboot
+repo=$(pwd)
 user=$USER
-doas $repo/template/mkboot/mkboot.openbsd $repo $version $arch $user
+doas $repo/scripts/mkboot.openbsd $repo $version $arch $user

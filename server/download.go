@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"io"
@@ -52,33 +53,15 @@ func MkdirAllRoot(root *os.Root, pathname string) error {
 	return nil
 }
 
-func DownloadFileRoot(root *os.Root, mirrorUrl, requestPath string) (string, error) {
+func DownloadFileRoot(root *os.Root, mirrorUrl, requestPath string) (string, []byte, error) {
 
 	//log.Printf("DownloadFileRoot(<root>, %s, %s)\n", mirrorUrl, requestPath)
+	buf := []byte{}
 
-	pathname := filepath.FromSlash(strings.TrimLeft(requestPath, "/"))
-	if IsFileRoot(root, pathname) {
-		log.Printf("cached: %s\n", pathname)
-		return pathname, nil
-	}
-	if IsDirRoot(root, pathname) {
-		return "", Fatalf("path is directory: %s", pathname)
-	}
-	dir, _ := filepath.Split(pathname)
-	if dir != "" {
-		err := MkdirAllRoot(root, dir)
-		if err != nil {
-			return "", Fatal(err)
-		}
-	}
-	file, err := root.Create(pathname)
-	if err != nil {
-		return "", Fatal(err)
-	}
-	defer file.Close()
+	// create proxy client
 	parsed, err := url.Parse(mirrorUrl)
 	if err != nil {
-		return "", Fatal(err)
+		return "", buf, Fatal(err)
 	}
 	client := &http.Client{}
 	switch parsed.Scheme {
@@ -86,26 +69,62 @@ func DownloadFileRoot(root *os.Root, mirrorUrl, requestPath string) (string, err
 	case "https":
 		certPool, err := x509.SystemCertPool()
 		if err != nil {
-			return "", Fatal(err)
+			return "", buf, Fatal(err)
 		}
 		client.Transport = &http.Transport{
 			TLSClientConfig: &tls.Config{RootCAs: certPool},
 		}
 	default:
-		return "", Fatalf("unexpected scheme: %s", mirrorUrl)
+		return "", buf, Fatalf("unexpected scheme: %s", mirrorUrl)
 	}
+
+	pathname := filepath.FromSlash(strings.TrimLeft(requestPath, "/"))
+	if IsFileRoot(root, pathname) {
+		log.Printf("cached: %s\n", pathname)
+		return pathname, buf, nil
+	}
+	if IsDirRoot(root, pathname) || strings.HasSuffix(pathname, "/") {
+		// if the request is for a directory, pass it through to the mirror
+		relayUrl := mirrorUrl + requestPath
+		log.Printf("relaying directory request: %s\n", relayUrl)
+		response, err := client.Get(relayUrl)
+		if err != nil {
+			return "", buf, Fatal(err)
+		}
+		defer response.Body.Close()
+		var data bytes.Buffer
+		count, err := io.Copy(&data, response.Body)
+		if err != nil {
+			return "", buf, Fatal(err)
+		}
+		log.Printf("returning %d bytes\n", count)
+		return "", data.Bytes(), nil
+	}
+	dir, _ := filepath.Split(pathname)
+	if dir != "" {
+		err := MkdirAllRoot(root, dir)
+		if err != nil {
+			return "", buf, Fatal(err)
+		}
+	}
+	file, err := root.Create(pathname)
+	if err != nil {
+		return "", buf, Fatal(err)
+	}
+	defer file.Close()
+
 	fileUrl := mirrorUrl + requestPath
 	log.Printf("downloading %s\n", fileUrl)
 	response, err := client.Get(fileUrl)
 	if err != nil {
-		return "", Fatal(err)
+		return "", buf, Fatal(err)
 	}
 	defer response.Body.Close()
 
 	count, err := io.Copy(file, response.Body)
 	if err != nil {
-		return "", Fatal(err)
+		return "", buf, Fatal(err)
 	}
 	log.Printf("ok (%d bytes)\n", count)
-	return pathname, nil
+	return pathname, buf, nil
 }

@@ -31,11 +31,20 @@ type Server struct {
 	HttpPort   int
 	verbose    bool
 	debug      bool
+	proxy      bool
 	hosts      *HostCache
 	wg         sync.WaitGroup
 	shutdown   chan struct{}
 	NetbootDir string
 }
+
+type NetbootOption int
+
+const (
+	NetbootOptionDefault NetbootOption = iota
+	NetbootOptionEnable
+	NetbootOptionDisable
+)
 
 type Options struct {
 	Hostname  string
@@ -43,6 +52,7 @@ type Options struct {
 	HttpPort  int
 	HttpsPort int
 	CacheDir  string
+	Proxy     NetbootOption
 }
 
 func NewServer(options *Options) (*Server, error) {
@@ -84,14 +94,24 @@ func NewServer(options *Options) (*Server, error) {
 		HttpPort:   options.HttpPort,
 		HttpsPort:  options.HttpsPort,
 		verbose:    viper.GetBool("netboot.verbose"),
-		debug:      viper.GetBool("netboot.verbose"),
+		debug:      viper.GetBool("netboot.debug"),
 		hosts:      hostCache,
 		shutdown:   make(chan struct{}, 1),
 		NetbootDir: options.CacheDir,
 	}
 
+	switch options.Proxy {
+	case NetbootOptionEnable:
+		s.proxy = true
+	case NetbootOptionDisable:
+		s.proxy = false
+	default:
+		s.proxy = viper.GetBool("netboot.proxy")
+	}
+
 	s.hosts.httpPort = s.HttpPort
 	s.hosts.httpsPort = s.HttpsPort
+	s.hosts.proxy = s.proxy
 
 	return &s, nil
 }
@@ -109,27 +129,35 @@ func (s *Server) Start() error {
 
 	httpMux := http.NewServeMux()
 	httpMux.HandleFunc("GET /", s.hosts.RootHandler)
-	httpMux.HandleFunc("GET /version/", s.hosts.VersionHandler)
-	httpMux.HandleFunc("GET /debian/", s.hosts.DebianHandler)
-	httpMux.HandleFunc("GET /debian-security/", s.hosts.DebianSecurityHandler)
-	httpMux.HandleFunc("GET /ipxe/", s.hosts.IPXEHandler)
+	httpMux.HandleFunc("GET /san/", s.hosts.SanBootHandler)
+
+	if s.proxy {
+		httpMux.HandleFunc("GET /debian/", s.hosts.DebianHandler)
+		httpMux.HandleFunc("GET /debian-security/", s.hosts.DebianSecurityHandler)
+		httpMux.HandleFunc("GET /pub/OpenBSD/", s.hosts.OpenBSDHandler)
+	}
 
 	httpsMux := http.NewServeMux()
-	httpsMux.HandleFunc("GET /", s.hosts.RootHandler)
-	httpsMux.HandleFunc("GET /version/", s.hosts.VersionHandler)
-	httpsMux.HandleFunc("GET /utc", s.hosts.UTCHandler)
-	httpsMux.HandleFunc("GET /gdl/{version}/{arch}/{file}", s.hosts.GDLHandler)
+	httpsMux.HandleFunc("GET /", s.hosts.RootHandlerTLS)
+	httpsMux.HandleFunc("GET /version/", s.hosts.VersionHandlerTLS)
+	httpsMux.HandleFunc("GET /utc", s.hosts.UTCHandlerTLS)
+	httpsMux.HandleFunc("GET /gdl/{version}/{arch}/{file}", s.hosts.GDLHandlerTLS)
 	httpsMux.HandleFunc("GET /ipxe/", s.hosts.IPXEHandlerTLS)
-	httpsMux.HandleFunc("GET /alpine/", s.hosts.AlpineHandler)
-	httpsMux.HandleFunc("GET /debian/", s.hosts.DebianHandler)
-	httpsMux.HandleFunc("GET /debian-security/", s.hosts.DebianSecurityHandler)
-	httpsMux.HandleFunc("GET /pub/OpenBSD/", s.hosts.OpenBSDHandler)
-	httpsMux.HandleFunc("GET /api/hosts/", s.hosts.ListHostsHandler)
-	httpsMux.HandleFunc("GET /api/booted/", s.hosts.HostBootedHandler)
-	httpsMux.HandleFunc("GET /api/address/", s.hosts.HostAddressQueryHandler)
-	httpsMux.HandleFunc("PUT /api/host/", s.hosts.AddHostHandler)
-	httpsMux.HandleFunc("DELETE /api/host/", s.hosts.DeleteHostHandler)
-	httpsMux.HandleFunc("POST /api/tarball/", s.hosts.UploadPackageHandler)
+	httpsMux.HandleFunc("GET /netboot.png", s.hosts.PNGHandlerTLS)
+
+	httpsMux.HandleFunc("GET /api/hosts/", s.hosts.ListHostsHandlerTLS)
+	httpsMux.HandleFunc("GET /api/booted/{mac}/{ip}/", s.hosts.HostBootedHandlerTLS)
+	httpsMux.HandleFunc("GET /api/address/", s.hosts.HostAddressQueryHandlerTLS)
+	httpsMux.HandleFunc("PUT /api/host/", s.hosts.AddHostHandlerTLS)
+	httpsMux.HandleFunc("DELETE /api/host/", s.hosts.DeleteHostHandlerTLS)
+	httpsMux.HandleFunc("POST /api/tarball/", s.hosts.UploadPackageHandlerTLS)
+
+	if s.proxy {
+		httpsMux.HandleFunc("GET /alpine/", s.hosts.AlpineHandlerTLS)
+		httpsMux.HandleFunc("GET /debian/", s.hosts.DebianHandlerTLS)
+		httpsMux.HandleFunc("GET /debian-security/", s.hosts.DebianSecurityHandlerTLS)
+		httpsMux.HandleFunc("GET /pub/OpenBSD/", s.hosts.OpenBSDHandlerTLS)
+	}
 
 	httpsServer := &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", s.Address, s.HttpsPort),
