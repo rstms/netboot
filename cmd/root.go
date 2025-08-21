@@ -42,7 +42,7 @@ var cfgFile string
 const ProgramName = "netboot"
 
 var rootCmd = &cobra.Command{
-	Version: "0.0.9",
+	Version: "0.0.10",
 	Use:     "netboot",
 	Short:   "netboot server daemon",
 	Long: `
