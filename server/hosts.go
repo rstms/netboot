@@ -104,10 +104,10 @@ type HostCache struct {
 
 func NewHostCache(dir string, template *Template) (*HostCache, error) {
 
-	viper.SetDefault("netboot.mirror.alpine", DEFAULT_ALPINE_MIRROR)
-	viper.SetDefault("netboot.mirror.debian", DEFAULT_DEBIAN_MIRROR)
-	viper.SetDefault("netboot.mirror.debian-security", DEFAULT_DEBIAN_SECURITY_MIRROR)
-	viper.SetDefault("netboot.mirror.openbsd", DEFAULT_OPENBSD_MIRROR)
+	viper.SetDefault("netboot_server.mirror.alpine", DEFAULT_ALPINE_MIRROR)
+	viper.SetDefault("netboot_server.mirror.debian", DEFAULT_DEBIAN_MIRROR)
+	viper.SetDefault("netboot_server.mirror.debian-security", DEFAULT_DEBIAN_SECURITY_MIRROR)
+	viper.SetDefault("netboot_server.mirror.openbsd", DEFAULT_OPENBSD_MIRROR)
 
 	c := HostCache{
 		cache:    make(map[string]string),
@@ -421,7 +421,7 @@ func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.R
 		return
 	}
 
-	mirrorUrl := viper.GetString("netboot.mirror." + mirror)
+	mirrorUrl := viper.GetString("netboot_server.mirror." + mirror)
 	if mirrorUrl == "" {
 		Warning("No mirror configured: %s", mirror)
 		fail(w, "no mirror configured", http.StatusNotImplemented)
@@ -716,7 +716,7 @@ func (c *HostCache) DeleteHostHandlerTLS(w http.ResponseWriter, r *http.Request)
 
 func (c *HostCache) deleteAddressFiles(inAddress string, w http.ResponseWriter) {
 	log.Printf("deleteAddressFiles: %s\n", inAddress)
-	if viper.GetBool("netboot.no_delete_ipxe") {
+	if viper.GetBool("netboot_server.no_delete_ipxe") {
 		return
 	}
 	addresses, err := c.hostAddresses()
