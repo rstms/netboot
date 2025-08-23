@@ -4,10 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"embed"
 	"fmt"
-	"io/ioutil"
-	//"github.com/rstms/netboot/template"
 	"github.com/spf13/viper"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -23,6 +23,13 @@ const DEFAULT_HOSTNAME = "netboot.local"
 const DEFAULT_ADDRESS = "127.0.0.1"
 const DEFAULT_HTTPS_PORT = "4443"
 const DEFAULT_HTTP_PORT = "4444"
+
+type Template struct {
+	Certs  embed.FS
+	Ipxe   embed.FS
+	Dist   embed.FS
+	Mkboot embed.FS
+}
 
 type Server struct {
 	Hostname   string
@@ -53,6 +60,7 @@ type Options struct {
 	HttpsPort int
 	CacheDir  string
 	Proxy     NetbootOption
+	Template  *Template
 }
 
 func NewServer(options *Options) (*Server, error) {
@@ -84,7 +92,7 @@ func NewServer(options *Options) (*Server, error) {
 	if options.CacheDir == "" {
 		options.CacheDir = viper.GetString("netboot.cache_dir")
 	}
-	hostCache, err := NewHostCache(options.CacheDir)
+	hostCache, err := NewHostCache(options.CacheDir, options.Template)
 	if err != nil {
 		return nil, err
 	}

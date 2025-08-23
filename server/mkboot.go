@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/rstms/netboot/bootimg"
 	"github.com/rstms/netboot/bootiso"
-	"github.com/rstms/netboot/template"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,15 +17,17 @@ type MkBoot struct {
 	BootFiles []string
 	Config    *Config
 	ISO       string
+	template  *Template
 }
 
-func NewMkBoot(tempDir, ipxeDir, url string, bootFiles []string, config *Config) *MkBoot {
+func NewMkBoot(tempDir, ipxeDir, url string, bootFiles []string, config *Config, template *Template) *MkBoot {
 	m := MkBoot{
 		TempDir:   tempDir,
 		IpxeDir:   ipxeDir,
 		URL:       url,
 		BootFiles: bootFiles,
 		Config:    config,
+		template:  template,
 	}
 	return &m
 }
@@ -70,7 +71,7 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	// copy openbsd netboot iso: /ipxe/MAC.boot
 	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.iso", m.Config.Version, m.Config.Arch))
 	dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
-	err := CopyFileFromFS(dstBoot, srcBoot, template.Ipxe)
+	err := CopyFileFromFS(dstBoot, srcBoot, m.template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -82,7 +83,7 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	tag := strings.ReplaceAll(m.Config.Version, ".", "")
 	srcGdl := filepath.Join("dist", "openbsd", m.Config.Version, m.Config.Arch, "gdl"+tag+".tgz")
 	dstGdl := filepath.Join(m.TempDir, "gdl.tgz")
-	err = CopyFileFromFS(dstGdl, srcGdl, template.Dist)
+	err = CopyFileFromFS(dstGdl, srcGdl, m.template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -96,14 +97,14 @@ func (m *MkBoot) mkbootDebian() error {
 
 	// generate error if version/arch not present
 	distDir := filepath.Join("dist", "debian", m.Config.Version, m.Config.Arch)
-	if !IsDirFS(template.Dist, distDir) {
+	if !IsDirFS(m.template.Dist, distDir) {
 		return Fatalf("unsupported: Debian %s %s", m.Config.Version, m.Config.Arch)
 	}
 
 	// copy cacerts.tgz: /ipxe/MAC.cacerts
 	// will be patched into the initrd by rstms-netboot-debian.ipxe as /cacerts.tgz
 	cacerts := filepath.Join(m.IpxeDir, m.Config.Address+".cacerts")
-	err := CopyFileFromFS(cacerts, filepath.Join("certs", "cacerts.tgz"), template.Certs)
+	err := CopyFileFromFS(cacerts, filepath.Join("certs", "cacerts.tgz"), m.template.Certs)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -111,7 +112,7 @@ func (m *MkBoot) mkbootDebian() error {
 	// stage netboot.rc from template as /ipxe/MAC.postinstall
 	// NOTE: this IS NOT /postinstall from package.tgz (see alpine)
 	postinstall := filepath.Join(m.IpxeDir, m.Config.Address+".postinstall")
-	err = CopyFileFromFS(postinstall, "mkboot/rc.netboot.debian", template.Mkboot)
+	err = CopyFileFromFS(postinstall, "mkboot/rc.netboot.debian", m.template.Mkboot)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -119,7 +120,7 @@ func (m *MkBoot) mkbootDebian() error {
 	// copy the debian installer kernel: /ipxe/MAC.kernel
 	srcKernal := filepath.Join(distDir, "linux")
 	dstKernal := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
-	err = CopyFileFromFS(dstKernal, srcKernal, template.Dist)
+	err = CopyFileFromFS(dstKernal, srcKernal, m.template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -127,7 +128,7 @@ func (m *MkBoot) mkbootDebian() error {
 	// copy the debian installer initrd: /ipxe/MAC.initrd
 	srcInitrd := filepath.Join(distDir, "initrd.gz")
 	dstInitrd := filepath.Join(m.IpxeDir, m.Config.Address+".initrd")
-	err = CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
+	err = CopyFileFromFS(dstInitrd, srcInitrd, m.template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -148,14 +149,14 @@ func (m *MkBoot) mkbootAlpine() error {
 
 	// generate error if version/arch not present
 	distDir := filepath.Join("dist", "alpine", m.Config.Version, m.Config.Arch)
-	if !IsDirFS(template.Dist, distDir) {
+	if !IsDirFS(m.template.Dist, distDir) {
 		return Fatalf("unsupported: alpine %s %s", m.Config.Version, m.Config.Arch)
 	}
 
 	// copy the alpine netboot kernel: /ipxe/MAC.kernel
 	srcKernel := filepath.Join(distDir, "kernel")
 	dstKernel := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
-	err := CopyFileFromFS(dstKernel, srcKernel, template.Dist)
+	err := CopyFileFromFS(dstKernel, srcKernel, m.template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -163,7 +164,7 @@ func (m *MkBoot) mkbootAlpine() error {
 	// copy the alpine netboot initrd: /ipxe/MAC.initrd
 	srcInitrd := filepath.Join(distDir, "initrd")
 	dstInitrd := filepath.Join(m.IpxeDir, m.Config.Address+".initrd")
-	err = CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
+	err = CopyFileFromFS(dstInitrd, srcInitrd, m.template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -171,7 +172,7 @@ func (m *MkBoot) mkbootAlpine() error {
 	// copy the alpine netboot modloop: /ipxe/MAC.modloop
 	srcModloop := filepath.Join(distDir, "modloop")
 	dstModloop := filepath.Join(m.IpxeDir, m.Config.Address+".modloop")
-	err = CopyFileFromFS(dstModloop, srcModloop, template.Dist)
+	err = CopyFileFromFS(dstModloop, srcModloop, m.template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -237,7 +238,7 @@ func (m *MkBoot) mkbootAlpine() error {
 		return Fatal(err)
 	}
 	autostart := filepath.Join(localDir, "auto-setup-alpine.start")
-	err = CopyFileFromFS(autostart, filepath.Join("mkboot", "rc.netboot.alpine"), template.Mkboot)
+	err = CopyFileFromFS(autostart, filepath.Join("mkboot", "rc.netboot.alpine"), m.template.Mkboot)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -266,14 +267,14 @@ func (m *MkBoot) buildISO() error {
 
 	// copy netboot source ISO from IPXE template
 	srcIso := filepath.Join(m.TempDir, "netboot.iso")
-	err := CopyFileFromFS(srcIso, filepath.Join("ipxe", "netboot.xyz.iso"), template.Ipxe)
+	err := CopyFileFromFS(srcIso, filepath.Join("ipxe", "netboot.xyz.iso"), m.template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
 
 	// copy source EFI boot disk image for CreateEFIImage from IPXE template
 	efiBin := filepath.Join(m.TempDir, "BOOTX64.EFI")
-	err = CopyFileFromFS(efiBin, filepath.Join("ipxe", "netboot.xyz.efi"), template.Ipxe)
+	err = CopyFileFromFS(efiBin, filepath.Join("ipxe", "netboot.xyz.efi"), m.template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}

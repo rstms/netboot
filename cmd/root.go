@@ -32,6 +32,7 @@ package cmd
 
 import (
 	"github.com/rstms/netboot/server"
+	"github.com/rstms/netboot/template"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -50,11 +51,18 @@ Run the netboot HTTPS server, serving the netboot API endpoints and the files
 requested by the netboot IPXE bootstrap.
 `,
 	Run: func(cmd *cobra.Command, args []string) {
+
 		options := server.Options{
 			Hostname:  ViperGetString("hostname"),
 			Address:   ViperGetString("address"),
 			HttpPort:  ViperGetInt("http_port"),
 			HttpsPort: ViperGetInt("https_port"),
+			Template: &server.Template{
+				Certs:  template.Certs,
+				Dist:   template.Dist,
+				Ipxe:   template.Ipxe,
+				Mkboot: template.Mkboot,
+			},
 		}
 		server, err := server.NewServer(&options)
 		cobra.CheckErr(err)

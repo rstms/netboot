@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/rstms/netboot/template"
 	"github.com/spf13/viper"
 	"io"
 	"io/ioutil"
@@ -100,9 +99,10 @@ type HostCache struct {
 	httpPort  int
 	httpsPort int
 	proxy     bool
+	template  *Template
 }
 
-func NewHostCache(dir string) (*HostCache, error) {
+func NewHostCache(dir string, template *Template) (*HostCache, error) {
 
 	viper.SetDefault("netboot.mirror.alpine", DEFAULT_ALPINE_MIRROR)
 	viper.SetDefault("netboot.mirror.debian", DEFAULT_DEBIAN_MIRROR)
@@ -114,6 +114,7 @@ func NewHostCache(dir string) (*HostCache, error) {
 		cacheDir: dir,
 		ipxeDir:  filepath.Join(dir, "ipxe"),
 		distDir:  filepath.Join(dir, "dist"),
+		template: template,
 	}
 	if !IsDir(c.ipxeDir) {
 		err := os.MkdirAll(c.ipxeDir, 0700)
@@ -131,7 +132,7 @@ func NewHostCache(dir string) (*HostCache, error) {
 	dstImage := filepath.Join(c.ipxeDir, "ipxe.png")
 	if !IsFile(dstImage) {
 		srcImage := filepath.Join("ipxe", "ipxe.png")
-		err := CopyFileFromFS(dstImage, srcImage, template.Ipxe)
+		err := CopyFileFromFS(dstImage, srcImage, c.template.Ipxe)
 		if err != nil {
 			return nil, Fatal(err)
 		}
@@ -145,7 +146,7 @@ func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, co
 
 	log.Printf("expandIpxeFile(%s, %s, %s, <config>)\n", dstPathname, srcName, url)
 
-	src, err := template.Ipxe.Open(filepath.Join("ipxe", srcName))
+	src, err := c.template.Ipxe.Open(filepath.Join("ipxe", srcName))
 	if err != nil {
 		return err
 	}
@@ -324,7 +325,7 @@ func (c *HostCache) GDLHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	major := parts[1]
 	minor := parts[2]
 	gdlPathname := filepath.Join("dist", "openbsd", version, arch, fmt.Sprintf("gdl%s%s.tgz", major, minor))
-	http.ServeFileFS(w, r, template.Dist, gdlPathname)
+	http.ServeFileFS(w, r, c.template.Dist, gdlPathname)
 }
 
 func (c *HostCache) checkPath(prefix string, w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -375,7 +376,7 @@ func (c *HostCache) PNGHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if !c.requireClientCert(w, r) {
 		return
 	}
-	http.ServeFileFS(w, r, template.Ipxe, "/ipxe/netboot.png")
+	http.ServeFileFS(w, r, c.template.Ipxe, "/ipxe/netboot.png")
 }
 
 func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -868,7 +869,7 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, bootFiles []string
 		return "", Fatal(err)
 	}
 
-	mkboot := NewMkBoot(tempDir, c.ipxeDir, url, bootFiles, config)
+	mkboot := NewMkBoot(tempDir, c.ipxeDir, url, bootFiles, config, c.template)
 	isoFile, err := mkboot.Generate()
 	if err != nil {
 		return "", Fatal(err)
