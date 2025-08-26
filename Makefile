@@ -57,6 +57,8 @@ latest_module_release = $(shell gh --repo $(1) release list --json tagName --jq 
 update:
 	@echo checking dependencies for updated versions 
 	@$(foreach module,$(rstms_modules),go get $(module)@$(call latest_module_release,$(module));)
+	curl -L -o cmd/common.go https://raw.githubusercontent.com/rstms/go-common/master/proxy_common_go
+	sed <cmd/common.go >server/common.go 's/^package cmd/package server/'
 
 mirrors:
 	cd template && gmake -j 7 

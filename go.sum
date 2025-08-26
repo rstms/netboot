@@ -46,6 +46,8 @@ github.com/rstms/go-common v0.1.24 h1:J2mDbegjzmxYcvdZtg+eqHK1f4cO0ZjftwCvIuw7LH
 github.com/rstms/go-common v0.1.24/go.mod h1:X+YExXFyL7HOZwV8fB3VCqfehcBe2IqSaKzsacJQjb0=
 github.com/rstms/go-common v0.1.25 h1:1Y1Ako+z4xBosH5ZXKmOZh4MHHji/9eS5kBSTUtLbEo=
 github.com/rstms/go-common v0.1.25/go.mod h1:X+YExXFyL7HOZwV8fB3VCqfehcBe2IqSaKzsacJQjb0=
+github.com/rstms/go-common v0.1.32 h1:p7pOecH4NWzwHS2E+BXjU3kzhSMzIOxnApvPssEeS/0=
+github.com/rstms/go-common v0.1.32/go.mod h1:X+YExXFyL7HOZwV8fB3VCqfehcBe2IqSaKzsacJQjb0=
 github.com/rstms/go-fs v0.0.4 h1:cAKOEA6g8SGT7bBPyxgvhLAHB4/bIa25TC1sl8nvcJA=
 github.com/rstms/go-fs v0.0.4/go.mod h1:DQ0uCmy3HyyS9jVWXNWxtwKY8hzaPMXhScUXKOEbm2s=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=

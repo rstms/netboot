@@ -7,19 +7,19 @@ import (
 	"embed"
 	"fmt"
 	"github.com/spf13/viper"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
 
 const Version = "1.0.0"
-const DEFAULT_HOSTNAME = "netboot.local"
+const DEFAULT_HOSTNAME = "localhost"
 const DEFAULT_ADDRESS = "127.0.0.1"
 const DEFAULT_HTTPS_PORT = "4443"
 const DEFAULT_HTTP_PORT = "4444"
@@ -33,17 +33,22 @@ type Template struct {
 }
 
 type Server struct {
-	Hostname   string
-	Address    string
-	HttpsPort  int
-	HttpPort   int
-	verbose    bool
-	debug      bool
-	proxy      bool
-	hosts      *HostCache
-	wg         sync.WaitGroup
-	shutdown   chan struct{}
-	NetbootDir string
+	Hostname               string
+	Address                string
+	HttpsPort              int
+	HttpPort               int
+	verbose                bool
+	debug                  bool
+	proxy                  bool
+	hosts                  *HostCache
+	wg                     sync.WaitGroup
+	shutdown               chan struct{}
+	NetbootDir             string
+	caFile                 string
+	certFile               string
+	keyFile                string
+	shutdownTimeoutSeconds int
+	viperPrefix            string
 }
 
 type NetbootOption int
@@ -64,49 +69,76 @@ type Options struct {
 	Template  *Template
 }
 
-func NewServer(options *Options) (*Server, error) {
-	viper.SetDefault("netboot_server.shutdown_timeout_seconds", DEFAULT_SHUTDOWN_TIMEOUT_SECONDS)
-	viper.SetDefault("netboot_server.hostname", DEFAULT_HOSTNAME)
-	viper.SetDefault("netboot_server.address", DEFAULT_ADDRESS)
-	viper.SetDefault("netboot_server.https_port", DEFAULT_HTTPS_PORT)
-	viper.SetDefault("netboot_server.http_port", DEFAULT_HTTP_PORT)
+func expandFilename(filename string) (string, error) {
+	filename = os.ExpandEnv(filename)
+	if strings.HasPrefix(filename, "~") {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		filename = filepath.Join(homeDir, filename[1:])
+	}
+	return filepath.Clean(filename), nil
+}
+
+func NewServer(viperPrefix string, options *Options) (*Server, error) {
+	if viperPrefix == "" {
+		viperPrefix = "netboot_server"
+	}
+	viper.SetDefault(viperPrefix+".hostname", DEFAULT_HOSTNAME)
+	viper.SetDefault(viperPrefix+".address", DEFAULT_ADDRESS)
+	viper.SetDefault(viperPrefix+".https_port", DEFAULT_HTTPS_PORT)
+	viper.SetDefault(viperPrefix+".http_port", DEFAULT_HTTP_PORT)
+	viper.SetDefault(viperPrefix+".shutdown_timeout_seconds", DEFAULT_SHUTDOWN_TIMEOUT_SECONDS)
 	userCache, err := os.UserCacheDir()
 	if err != nil {
 		return nil, err
 	}
-	viper.SetDefault("netboot_server.cache_dir", filepath.Join(userCache, "netboot"))
+	viper.SetDefault(viperPrefix+".cache_dir", filepath.Join(userCache, "netboot"))
 	if options == nil {
 		options = &Options{}
 	}
-	if options.Hostname == "" {
-		options.Hostname = viper.GetString("netboot_server.hostname")
-	}
+
 	if options.Address == "" {
-		options.Address = viper.GetString("netboot_server.address")
+		options.Address = viper.GetString(viperPrefix + ".address")
 	}
 	if options.HttpsPort == 0 {
-		options.HttpsPort = viper.GetInt("netboot_server.https_port")
+		options.HttpsPort = viper.GetInt(viperPrefix + ".https_port")
 	}
 	if options.HttpPort == 0 {
-		options.HttpPort = viper.GetInt("netboot_server.http_port")
+		options.HttpPort = viper.GetInt(viperPrefix + ".http_port")
 	}
 	if options.CacheDir == "" {
-		options.CacheDir = viper.GetString("netboot_server.cache_dir")
+		options.CacheDir = viper.GetString(viperPrefix + ".cache_dir")
 	}
 	hostCache, err := NewHostCache(options.CacheDir, options.Template)
 	if err != nil {
 		return nil, err
 	}
 	s := Server{
-		Hostname:   options.Hostname,
-		Address:    options.Address,
-		HttpPort:   options.HttpPort,
-		HttpsPort:  options.HttpsPort,
-		verbose:    viper.GetBool("netboot_server.verbose"),
-		debug:      viper.GetBool("netboot_server.debug"),
-		hosts:      hostCache,
-		shutdown:   make(chan struct{}, 1),
-		NetbootDir: options.CacheDir,
+		Address:                options.Address,
+		HttpPort:               options.HttpPort,
+		HttpsPort:              options.HttpsPort,
+		verbose:                viper.GetBool(viperPrefix + ".verbose"),
+		debug:                  viper.GetBool(viperPrefix + ".debug"),
+		hosts:                  hostCache,
+		shutdown:               make(chan struct{}, 1),
+		NetbootDir:             options.CacheDir,
+		shutdownTimeoutSeconds: viper.GetInt(viperPrefix + ".shutdown_timeout_seconds"),
+		viperPrefix:            viperPrefix,
+	}
+
+	s.caFile, err = expandFilename(viper.GetString(viperPrefix + ".ca"))
+	if err != nil {
+		return nil, err
+	}
+	s.certFile, err = expandFilename(viper.GetString(viperPrefix + ".cert"))
+	if err != nil {
+		return nil, err
+	}
+	s.keyFile, err = expandFilename(viper.GetString(viperPrefix + ".key"))
+	if err != nil {
+		return nil, err
 	}
 
 	switch options.Proxy {
@@ -115,7 +147,7 @@ func NewServer(options *Options) (*Server, error) {
 	case NetbootOptionDisable:
 		s.proxy = false
 	default:
-		s.proxy = viper.GetBool("netboot_server.enable_proxy")
+		s.proxy = viper.GetBool(viperPrefix + ".enable_proxy")
 	}
 
 	s.hosts.httpPort = s.HttpPort
@@ -123,6 +155,16 @@ func NewServer(options *Options) (*Server, error) {
 	s.hosts.proxy = s.proxy
 
 	return &s, nil
+}
+
+func (s *Server) GetConfig() map[string]any {
+	cfg := make(map[string]any)
+	for _, key := range viper.AllKeys() {
+		if strings.HasPrefix(key, s.viperPrefix+".") {
+			cfg[key] = viper.Get(key)
+		}
+	}
+	return cfg
 }
 
 func (s *Server) Stop() error {
@@ -153,7 +195,6 @@ func (s *Server) Start() error {
 	httpsMux.HandleFunc("GET /gdl/{version}/{arch}/{file}", s.hosts.GDLHandlerTLS)
 	httpsMux.HandleFunc("GET /ipxe/", s.hosts.IPXEHandlerTLS)
 	httpsMux.HandleFunc("GET /netboot.png", s.hosts.PNGHandlerTLS)
-
 	httpsMux.HandleFunc("GET /api/hosts/", s.hosts.ListHostsHandlerTLS)
 	httpsMux.HandleFunc("GET /api/booted/{mac}/{ip}/", s.hosts.HostBootedHandlerTLS)
 	httpsMux.HandleFunc("GET /api/address/", s.hosts.HostAddressQueryHandlerTLS)
@@ -178,21 +219,17 @@ func (s *Server) Start() error {
 		Handler: httpMux,
 	}
 
-	certFile := viper.GetString("netboot_server.cert")
-	keyFile := viper.GetString("netboot_server.key")
-	caFile := viper.GetString("netboot_server.ca")
-
-	if certFile != "" || keyFile != "" || caFile != "" {
-		if certFile == "" || keyFile == "" || caFile == "" {
-			return fmt.Errorf("incomplete TLS config: cert=%s key=%s ca=%s\n", certFile, keyFile, caFile)
+	if s.certFile != "" || s.keyFile != "" || s.caFile != "" {
+		if s.certFile == "" || s.keyFile == "" || s.caFile == "" {
+			return fmt.Errorf("incomplete TLS config: cert=%s key=%s ca=%s\n", s.certFile, s.keyFile, s.caFile)
 		}
 
-		cert, err := tls.LoadX509KeyPair(os.ExpandEnv(certFile), os.ExpandEnv(keyFile))
+		cert, err := tls.LoadX509KeyPair(s.certFile, s.keyFile)
 		if err != nil {
 			return fmt.Errorf("error loading client certificate pair: %v", err)
 		}
 
-		caCerts, err := ioutil.ReadFile(os.ExpandEnv(caFile))
+		caCerts, err := os.ReadFile(s.caFile)
 		if err != nil {
 			return fmt.Errorf("error loading certificate authority file: %v", err)
 		}
@@ -243,7 +280,7 @@ func (s *Server) Start() error {
 		defer s.wg.Done()
 		<-s.shutdown
 		log.Println("received shutdown request")
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(viper.GetInt64("netboot_server.shutdown_timeout_seconds"))*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.shutdownTimeoutSeconds)*time.Second)
 		defer cancel()
 
 		log.Println("shutting down HTTPS server")
@@ -258,12 +295,20 @@ func (s *Server) Start() error {
 			log.Fatalln("HTTP Server Shutdown failed: ", err)
 		}
 	}()
+
 	return nil
 }
 
-func (s *Server) Wait() error {
+func (s *Server) Run(message string) error {
+	err := s.Start()
+	if err != nil {
+		return err
+	}
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	if message != "" {
+		fmt.Println(message)
+	}
 	<-sigs
 	fmt.Println("received shutdown signal")
 	return s.Stop()

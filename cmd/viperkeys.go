@@ -31,63 +31,28 @@ POSSIBILITY OF SUCH DAMAGE.
 package cmd
 
 import (
-	"github.com/rstms/netboot/server"
-	"github.com/rstms/netboot/template"
-	"os"
+	"fmt"
 
+	"github.com/rstms/netboot/server"
 	"github.com/spf13/cobra"
 )
 
-var cfgFile string
-
-const ProgramName = "netboot"
-
-var rootCmd = &cobra.Command{
-	Version: "0.0.12",
-	Use:     "netboot",
-	Short:   "netboot server daemon",
+var viperkeysCmd = &cobra.Command{
+	Use:   "viperkeys",
+	Short: "output default viper config",
 	Long: `
-Run the netboot HTTPS server, serving the netboot API endpoints and the files
-requested by the netboot IPXE bootstrap.
+output default viper config keys and values
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		options := server.Options{
-			Address:   ViperGetString("cli.bind_address"),
-			HttpPort:  ViperGetInt("cli.http_port"),
-			HttpsPort: ViperGetInt("cli.https_port"),
-			Template: &server.Template{
-				Certs:  template.Certs,
-				Dist:   template.Dist,
-				Ipxe:   template.Ipxe,
-				Mkboot: template.Mkboot,
-			},
-		}
-		server, err := server.NewServer("netboot", &options)
+		daemon, err := server.NewServer("", nil)
 		cobra.CheckErr(err)
-		var message string
-		if ViperGetBool("verbose") {
-			message = "CTRL-C to exit"
+		cfg := daemon.GetConfig()
+		for k, v := range cfg {
+			fmt.Printf("%s: %v\n", k, v)
 		}
-		err = server.Run(message)
-		cobra.CheckErr(err)
 	},
 }
 
-func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
-		os.Exit(1)
-	}
-}
 func init() {
-	cobra.OnInitialize(InitConfig)
-	OptionString(rootCmd, "logfile", "l", "", "log filename")
-	OptionString(rootCmd, "config", "c", "", "config file")
-	OptionSwitch(rootCmd, "debug", "d", "produce debug output")
-	OptionSwitch(rootCmd, "verbose", "v", "increase verbosity")
-	OptionString(rootCmd, "bind-address", "a", server.DEFAULT_ADDRESS, "listen bind address")
-	OptionString(rootCmd, "http-port", "p", server.DEFAULT_HTTP_PORT, "http listen port")
-	OptionString(rootCmd, "https-port", "P", server.DEFAULT_HTTPS_PORT, "https listen port")
-	OptionSwitch(rootCmd, "foreground", "f", "run in foreground")
-	OptionSwitch(rootCmd, "enable-proxy", "", "enable http proxy")
+	rootCmd.AddCommand(viperkeysCmd)
 }
