@@ -51,7 +51,7 @@ var Mkboot embed.FS
 var Dist embed.FS
 
 var rootCmd = &cobra.Command{
-	Version: "0.0.13",
+	Version: "0.0.14",
 	Use:     "netboot",
 	Short:   "netboot server daemon",
 	Long: `
