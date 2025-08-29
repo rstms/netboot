@@ -32,121 +32,21 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
-	"os/user"
-	"path/filepath"
-	"runtime"
-	"time"
-
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var configCmd = &cobra.Command{
-	Use:   "config [edit]",
-	Short: "output configuration",
+	Use:   "config",
+	Short: "config subcommands",
 	Long: `
-write current configuration file to stdout in YAML format
-add comments if --verbose
-optional edit command opens current config file in system editor
+subcommand for viewing or modifying the config file
 `,
-	Args: cobra.RangeArgs(0, 1),
 	Run: func(cmd *cobra.Command, args []string) {
-
-		if len(args) > 0 {
-			switch args[0] {
-			case "cat":
-			case "file":
-				fmt.Println(viper.ConfigFileUsed())
-				return
-			case "edit":
-				editConfigFile()
-				return
-			case "init":
-				initConfigFile()
-				return
-			default:
-				cobra.CheckErr(fmt.Errorf("unknown command: %s", args[0]))
-			}
-		}
-		if ViperGetBool("verbose") {
-			currentUser, err := user.Current()
-			cobra.CheckErr(err)
-			hostname, err := os.Hostname()
-			cobra.CheckErr(err)
-			fmt.Printf("# %s config\n", ProgramName)
-			fmt.Printf("# active: %s\n", filepath.Clean(viper.ConfigFileUsed()))
-			fmt.Printf("# generated: %s by %s@%s (%s_%s)\n",
-				time.Now().Format(time.DateTime),
-				currentUser.Username, hostname,
-				runtime.GOOS, runtime.GOARCH,
-			)
-
-			home, err := os.UserHomeDir()
-			cobra.CheckErr(err)
-			fmt.Printf("# user_home_dir: %s\n", home)
-
-			userConfig, err := os.UserConfigDir()
-			cobra.CheckErr(err)
-			fmt.Printf("# default_config_dir: %s\n", filepath.Join(userConfig, ProgramName))
-
-			userCache, err := os.UserCacheDir()
-			cobra.CheckErr(err)
-			fmt.Printf("# default_cache_dir: %s\n", filepath.Join(userCache, ProgramName))
-			fmt.Println("")
-		}
-
-		err := viper.WriteConfigTo(os.Stdout)
-		cobra.CheckErr(err)
+		fmt.Println(ConfigString(!ViperGetBool("config.no_header")))
 	},
 }
 
-func initConfigFile() {
-	file := cfgFile
-	if file == "" {
-		userConfig, err := os.UserConfigDir()
-		cobra.CheckErr(err)
-		dir := filepath.Join(userConfig, ProgramName)
-		if !IsDir(dir) {
-			if !Confirm(fmt.Sprintf("Create directory '%s'", dir)) {
-				return
-			}
-			err := os.Mkdir(dir, 0700)
-			cobra.CheckErr(err)
-		}
-		file = filepath.Join(dir, "config.yaml")
-	}
-	if IsFile(file) {
-		if !Confirm(fmt.Sprintf("Overwrite config file '%s'", file)) {
-			return
-		}
-	}
-	ViperSet("force", false)
-	err := viper.WriteConfigAs(file)
-	cobra.CheckErr(err)
-	fmt.Printf("Default configuration written to %s\n", file)
-}
-func editConfigFile() {
-	var editCommand string
-	if runtime.GOOS == "windows" {
-		editCommand = "notepad"
-	} else {
-		editCommand = os.Getenv("VISUAL")
-		if editCommand == "" {
-			editCommand = os.Getenv("EDITOR")
-			if editCommand == "" {
-				editCommand = "vi"
-			}
-		}
-	}
-	editor := exec.Command(editCommand, viper.ConfigFileUsed())
-	editor.Stdin = os.Stdin
-	editor.Stdout = os.Stdout
-	editor.Stderr = os.Stderr
-	err := editor.Run()
-	cobra.CheckErr(err)
-}
 func init() {
-	rootCmd.AddCommand(configCmd)
+	CobraAddCommand(rootCmd, rootCmd, configCmd)
+	OptionSwitch(configCmd, "no-header", "", "suppress config header comments")
 }

@@ -1,29 +1,22 @@
 # go makefile
 
+# common config
 program != basename $$(pwd)
-
-go_version = go1.24.5
-
-latest_release != gh release list --json tagName --jq '.[0].tagName' | tr -d v
 version != cat VERSION
-
-rstms_modules = $(shell awk <go.mod '/^module/{next} /rstms/{print $$1}')
-
+go_version = go1.24.5
+latest_release != gh release list --json tagName --jq '.[0].tagName' | tr -d v
+rstms_modules != awk <go.mod '/^module/{next} /rstms/{print $$1}'
 gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(info git status is clean))
 
-openbsd_netboot_iso = template/ipxe/openbsd-7.5-amd64.iso template/ipxe/openbsd-7.6-amd64.iso template/ipxe/openbsd-7.7-amd64.iso 
-keymaster = template/certs/keymaster.pem
-debian_cacerts = template/certs/cacerts.tgz
-
+# project config variables
+openbsd_netboot_iso = cmd/ipxe/openbsd-7.5-amd64.iso cmd/ipxe/openbsd-7.6-amd64.iso cmd/ipxe/openbsd-7.7-amd64.iso 
+keymaster = cmd/certs/keymaster.pem
+debian_cacerts = cmd/certs/cacerts.tgz
 generated_template_files = $(debian_cacerts) $(openbsd_netboot_iso)
 
+# common targets
+
 $(program): build
-
-gen: $(generated_template_files)
-
-regen: 
-	rm -f $(generated_template_files)
-	$(MAKE) gen
 
 build: fmt gen
 	fix go build . ./...
@@ -61,11 +54,11 @@ update:
 	sed <cmd/common.go >server/common.go 's/^package cmd/package server/'
 
 mirrors:
-	cd template && gmake -j 7 
+	cd cmd && gmake -j 7 
 
 
 clean-mirrors:
-	find template/dist -type f -not -name 'gdl??.tgz' -exec rm \{\} \;
+	find cmd/dist -type f -not -name 'gdl??.tgz' -exec rm \{\} \;
 
 clean:
 	rm -f $(program) *.core 
@@ -73,8 +66,7 @@ clean:
 	rm -rf /tmp/netboot*
 	rm -rf ~/.cache/netboot/ipxe
 	mkdir ~/.cache/netboot/ipxe
-	rm -f template/robots.txt template/wget-log*
-	rm -rf template/certs/debian
+	rm -rf cmd/certs/debian
 
 sterile: clean
 	which $(program) && go clean -i || true
@@ -83,8 +75,17 @@ sterile: clean
 	go clean -modcache
 	rm -f go.mod go.sum
 	rm -rf ~/.cache/netboot
-	rm -rf template/certs/*
-	touch template/certs/.placeholder
+	rm -rf cmd/certs/*
+	touch cmd/certs/.placeholder
+
+# project targets
+
+gen: $(generated_template_files)
+
+regen: 
+	rm -f $(generated_template_files)
+	$(MAKE) gen
+
 
 $(keymaster): /etc/ssl/keymaster.pem
 	cp $< $@
@@ -92,13 +93,13 @@ $(keymaster): /etc/ssl/keymaster.pem
 $(debian_cacerts): $(keymaster)
 	scripts/hash_debian_cacerts
 
-template/ipxe/openbsd-7.5-amd64.iso: template/dist/openbsd/7.5/amd64/cd75.iso $(wildcard template/mkboot/*.openbsd)
+cmd/ipxe/openbsd-7.5-amd64.iso: cmd/dist/openbsd/7.5/amd64/cd75.iso $(wildcard cmd/mkboot/*.openbsd)
 	scripts/generate_openbsd_netboot_iso 7.5 amd64
 
-template/ipxe/openbsd-7.6-amd64.iso: template/dist/openbsd/7.6/amd64/cd76.iso $(wildcard template/mkboot/*.openbsd)
+cmd/ipxe/openbsd-7.6-amd64.iso: cmd/dist/openbsd/7.6/amd64/cd76.iso $(wildcard cmd/mkboot/*.openbsd)
 	scripts/generate_openbsd_netboot_iso 7.6 amd64
 
-template/ipxe/openbsd-7.7-amd64.iso: template/dist/openbsd/7.7/amd64/cd77.iso $(wildcard template/mkboot/*.openbsd)
+cmd/ipxe/openbsd-7.7-amd64.iso: cmd/dist/openbsd/7.7/amd64/cd77.iso $(wildcard cmd/mkboot/*.openbsd)
 	scripts/generate_openbsd_netboot_iso 7.7 amd64
 
 run:

@@ -54,5 +54,5 @@ output default viper config keys and values
 }
 
 func init() {
-	rootCmd.AddCommand(viperkeysCmd)
+	CobraAddCommand(rootCmd, rootCmd, viperkeysCmd)
 }

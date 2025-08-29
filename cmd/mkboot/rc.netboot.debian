@@ -1,0 +1,38 @@
+#!/bin/sh
+
+# debian rc.netboot
+# staged for download as MAC.postinstall
+# loaded by debian autoexec.ipxe to install ramdisk /rc.netboot
+# executed by d-i preseed/late_command string in preseed.cfg (boxen response file)
+
+# preseed.cfg passes netboot URL (configured by boxen) as argument
+_url=$1
+
+# mount certs dir from cdrom
+mkdir /tmp/certs
+cp /etc/ssl/certs/keymaster*.crt /tmp/certs
+mkdir /tmp/cdrom
+mount -t iso9660 -o ro /dev/cdrom /tmp/cdrom 
+
+# create netboot output dir
+mkdir -p /target/root/.netboot
+chmod 0700 /target/root/.netboot
+
+# preserve preseed.cfg
+cp /preseed.cfg /target/root/.netboot
+
+_mac=$(ip address | awk '/link\/ether/{print $2}')
+_log=/target/root/.netboot/package
+_wget="wget --ca-directory /tmp/certs --certificate=/tmp/cdrom/netboot.pem --private-key=/tmp/cdrom/netboot.key"
+_tarball=${_url}/ipxe/${_mac}.tgz
+
+$_wget $_tarball -O - | tar zxv -C /target >${_log}.stdout 2>${_log}.stderr
+echo $? >${_log}.exitcode
+
+# fix tarball directory permissions 
+chmod 0755 /target
+chmod 0755 /target/etc
+chmod 0755 /target/etc/ssl
+
+umount /dev/cdrom 
+rm -rf /tmp/certs

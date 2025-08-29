@@ -32,15 +32,23 @@ package cmd
 
 import (
 	"github.com/rstms/netboot/server"
-	"github.com/rstms/netboot/template"
 	"os"
 
+	"embed"
 	"github.com/spf13/cobra"
 )
 
-var cfgFile string
+//go:embed certs
+var Certs embed.FS
 
-const ProgramName = "netboot"
+//go:embed ipxe
+var Ipxe embed.FS
+
+//go:embed mkboot
+var Mkboot embed.FS
+
+//go:embed dist
+var Dist embed.FS
 
 var rootCmd = &cobra.Command{
 	Version: "0.0.13",
@@ -52,14 +60,14 @@ requested by the netboot IPXE bootstrap.
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		options := server.Options{
-			Address:   ViperGetString("cli.bind_address"),
-			HttpPort:  ViperGetInt("cli.http_port"),
-			HttpsPort: ViperGetInt("cli.https_port"),
+			Address:   ViperGetString("bind_address"),
+			HttpPort:  ViperGetInt("http_port"),
+			HttpsPort: ViperGetInt("https_port"),
 			Template: &server.Template{
-				Certs:  template.Certs,
-				Dist:   template.Dist,
-				Ipxe:   template.Ipxe,
-				Mkboot: template.Mkboot,
+				Certs:  Certs,
+				Dist:   Dist,
+				Ipxe:   Ipxe,
+				Mkboot: Mkboot,
 			},
 		}
 		server, err := server.NewServer("netboot", &options)
@@ -80,11 +88,7 @@ func Execute() {
 	}
 }
 func init() {
-	cobra.OnInitialize(InitConfig)
-	OptionString(rootCmd, "logfile", "l", "", "log filename")
-	OptionString(rootCmd, "config", "c", "", "config file")
-	OptionSwitch(rootCmd, "debug", "d", "produce debug output")
-	OptionSwitch(rootCmd, "verbose", "v", "increase verbosity")
+	CobraInit(rootCmd)
 	OptionString(rootCmd, "bind-address", "a", server.DEFAULT_ADDRESS, "listen bind address")
 	OptionString(rootCmd, "http-port", "p", server.DEFAULT_HTTP_PORT, "http listen port")
 	OptionString(rootCmd, "https-port", "P", server.DEFAULT_HTTPS_PORT, "https listen port")
