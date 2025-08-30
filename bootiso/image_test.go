@@ -1,8 +1,8 @@
 package bootiso
 
 import (
+	"github.com/rstms/boxen-template/template"
 	common "github.com/rstms/go-common"
-	"github.com/rstms/netboot/template"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"io"

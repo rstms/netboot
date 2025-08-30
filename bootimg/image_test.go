@@ -2,8 +2,8 @@ package bootimg
 
 import (
 	"bytes"
+	"github.com/rstms/boxen-template/template"
 	common "github.com/rstms/go-common"
-	"github.com/rstms/netboot/template"
 	"github.com/stretchr/testify/require"
 	"io"
 	"log"

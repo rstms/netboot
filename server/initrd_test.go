@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/rstms/netboot/template"
+	"github.com/rstms/boxen-template/template"
 	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"

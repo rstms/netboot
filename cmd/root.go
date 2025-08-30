@@ -35,7 +35,6 @@ import (
 	"github.com/rstms/netboot/server"
 	"os"
 
-	"embed"
 	"github.com/spf13/cobra"
 )
 

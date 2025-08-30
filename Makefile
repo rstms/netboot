@@ -13,7 +13,7 @@ gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(i
 
 $(program): build
 
-build: fmt gen
+build: fmt 
 	fix go build . ./...
 	go build
 
