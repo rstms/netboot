@@ -31,24 +31,13 @@ POSSIBILITY OF SUCH DAMAGE.
 package cmd
 
 import (
+	"github.com/rstms/boxen-template/template"
 	"github.com/rstms/netboot/server"
 	"os"
 
 	"embed"
 	"github.com/spf13/cobra"
 )
-
-//go:embed certs
-var Certs embed.FS
-
-//go:embed ipxe
-var Ipxe embed.FS
-
-//go:embed mkboot
-var Mkboot embed.FS
-
-//go:embed dist
-var Dist embed.FS
 
 var rootCmd = &cobra.Command{
 	Version: "0.0.14",
@@ -64,10 +53,10 @@ requested by the netboot IPXE bootstrap.
 			HttpPort:  ViperGetInt("http_port"),
 			HttpsPort: ViperGetInt("https_port"),
 			Template: &server.Template{
-				Certs:  Certs,
-				Dist:   Dist,
-				Ipxe:   Ipxe,
-				Mkboot: Mkboot,
+				Certs:  template.Certs,
+				Dist:   template.Dist,
+				Ipxe:   template.Ipxe,
+				Mkboot: template.Mkboot,
 			},
 		}
 		server, err := server.NewServer("netboot", &options)
