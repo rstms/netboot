@@ -8,11 +8,6 @@ latest_release != gh release list --json tagName --jq '.[0].tagName' | tr -d v
 rstms_modules != awk <go.mod '/^module/{next} /rstms/{print $$1}'
 gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(info git status is clean))
 
-# project config variables
-openbsd_netboot_iso = cmd/ipxe/openbsd-7.5-amd64.iso cmd/ipxe/openbsd-7.6-amd64.iso cmd/ipxe/openbsd-7.7-amd64.iso 
-keymaster = cmd/certs/keymaster.pem
-debian_cacerts = cmd/certs/cacerts.tgz
-generated_template_files = $(debian_cacerts) $(openbsd_netboot_iso)
 
 # common targets
 
@@ -78,29 +73,7 @@ sterile: clean
 	rm -rf cmd/certs/*
 	touch cmd/certs/.placeholder
 
-# project targets
-
-gen: $(generated_template_files)
-
-regen: 
-	rm -f $(generated_template_files)
-	$(MAKE) gen
-
-
-$(keymaster): /etc/ssl/keymaster.pem
-	cp $< $@
-
-$(debian_cacerts): $(keymaster)
-	scripts/hash_debian_cacerts
-
-cmd/ipxe/openbsd-7.5-amd64.iso: cmd/dist/openbsd/7.5/amd64/cd75.iso $(wildcard cmd/mkboot/*.openbsd)
-	scripts/generate_openbsd_netboot_iso 7.5 amd64
-
-cmd/ipxe/openbsd-7.6-amd64.iso: cmd/dist/openbsd/7.6/amd64/cd76.iso $(wildcard cmd/mkboot/*.openbsd)
-	scripts/generate_openbsd_netboot_iso 7.6 amd64
-
-cmd/ipxe/openbsd-7.7-amd64.iso: cmd/dist/openbsd/7.7/amd64/cd77.iso $(wildcard cmd/mkboot/*.openbsd)
-	scripts/generate_openbsd_netboot_iso 7.7 amd64
 
 run:
 	./netboot -vl-
+

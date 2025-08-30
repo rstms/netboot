@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-set -ueo pipefail
-version=$1
-arch=$2
-repo=$(pwd)
-user=$USER
-doas $repo/scripts/mkboot.openbsd $repo $version $arch $user
