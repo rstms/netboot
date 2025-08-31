@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/spf13/viper"
 	"io"
 	"io/ioutil"
 	"log"
@@ -92,29 +91,46 @@ const htmlSuffix = `
 `
 
 type HostCache struct {
-	cacheDir  string
-	ipxeDir   string
-	distDir   string
-	cache     map[string]string
-	httpPort  int
-	httpsPort int
-	proxy     bool
-	template  *Template
+	cacheDir     string
+	ipxeDir      string
+	distDir      string
+	cache        map[string]string
+	httpPort     int
+	httpsPort    int
+	proxy        bool
+	template     *Template
+	noDeleteIpxe bool
+	mirrorUrl    map[string]string
 }
 
-func NewHostCache(dir string, template *Template) (*HostCache, error) {
+func NewHostCache(dir string, template *Template, httpPort, httpsPort int, proxyEnabled bool) (*HostCache, error) {
 
-	viper.SetDefault("netboot.server.mirror.alpine", DEFAULT_ALPINE_MIRROR)
-	viper.SetDefault("netboot.server.mirror.debian", DEFAULT_DEBIAN_MIRROR)
-	viper.SetDefault("netboot.server.mirror.debian-security", DEFAULT_DEBIAN_SECURITY_MIRROR)
-	viper.SetDefault("netboot.server.mirror.openbsd", DEFAULT_OPENBSD_MIRROR)
+	prefix := "netboot.server."
+	if ProgramName() == "netboot" {
+		prefix = "server."
+	}
+
+	ViperSetDefault(prefix+"mirror.alpine", DEFAULT_ALPINE_MIRROR)
+	ViperSetDefault(prefix+"mirror.debian", DEFAULT_DEBIAN_MIRROR)
+	ViperSetDefault(prefix+"mirror.debian-security", DEFAULT_DEBIAN_SECURITY_MIRROR)
+	ViperSetDefault(prefix+"mirror.openbsd", DEFAULT_OPENBSD_MIRROR)
 
 	c := HostCache{
-		cache:    make(map[string]string),
-		cacheDir: dir,
-		ipxeDir:  filepath.Join(dir, "ipxe"),
-		distDir:  filepath.Join(dir, "dist"),
-		template: template,
+		cacheDir:     dir,
+		template:     template,
+		httpPort:     httpPort,
+		httpsPort:    httpsPort,
+		proxy:        proxyEnabled,
+		cache:        make(map[string]string),
+		ipxeDir:      filepath.Join(dir, "ipxe"),
+		distDir:      filepath.Join(dir, "dist"),
+		noDeleteIpxe: ViperGetBool(prefix + "no_delete_ipxe"),
+		mirrorUrl: map[string]string{
+			"alpine":          ViperGetString(prefix + "mirror.alpine"),
+			"debian":          ViperGetString(prefix + "mirror.debian"),
+			"debian-security": ViperGetString(prefix + "mirror.debian-security"),
+			"openbsd":         ViperGetString(prefix + "mirror.openbsd"),
+		},
 	}
 	if !IsDir(c.ipxeDir) {
 		err := os.MkdirAll(c.ipxeDir, 0700)
@@ -129,9 +145,9 @@ func NewHostCache(dir string, template *Template) (*HostCache, error) {
 		}
 	}
 
-	dstImage := filepath.Join(c.ipxeDir, "ipxe.png")
+	dstImage := filepath.Join(c.ipxeDir, "netboot.png")
 	if !IsFile(dstImage) {
-		srcImage := filepath.Join("ipxe", "ipxe.png")
+		srcImage := filepath.Join("ipxe", "netboot.png")
 		err := CopyFileFromFS(dstImage, srcImage, c.template.Ipxe)
 		if err != nil {
 			return nil, Fatal(err)
@@ -269,8 +285,8 @@ func (c *HostCache) RootHandlerTLS(w http.ResponseWriter, r *http.Request) {
 
 func (c *HostCache) rootHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
-	case "/ipxe.png":
-		http.ServeFile(w, r, filepath.Join(c.ipxeDir, "ipxe.png"))
+	case "/netboot.png":
+		http.ServeFile(w, r, filepath.Join(c.ipxeDir, "netboot.png"))
 		return
 	}
 	fail(w, "forbidden", http.StatusForbidden)
@@ -421,7 +437,7 @@ func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.R
 		return
 	}
 
-	mirrorUrl := viper.GetString("netboot.server.mirror." + mirror)
+	mirrorUrl := c.mirrorUrl[mirror]
 	if mirrorUrl == "" {
 		Warning("No mirror configured: %s", mirror)
 		fail(w, "no mirror configured", http.StatusNotImplemented)
@@ -716,7 +732,7 @@ func (c *HostCache) DeleteHostHandlerTLS(w http.ResponseWriter, r *http.Request)
 
 func (c *HostCache) deleteAddressFiles(inAddress string, w http.ResponseWriter) {
 	log.Printf("deleteAddressFiles: %s\n", inAddress)
-	if viper.GetBool("netboot.server.no_delete_ipxe") {
+	if c.noDeleteIpxe {
 		return
 	}
 	addresses, err := c.hostAddresses()

@@ -32,7 +32,7 @@ type Template struct {
 	Mkboot embed.FS
 }
 
-type Server struct {
+type NetbootServer struct {
 	Hostname               string
 	Address                string
 	HttpsPort              int
@@ -48,25 +48,6 @@ type Server struct {
 	certFile               string
 	keyFile                string
 	shutdownTimeoutSeconds int
-	viperPrefix            string
-}
-
-type NetbootOption int
-
-const (
-	NetbootOptionDefault NetbootOption = iota
-	NetbootOptionEnable
-	NetbootOptionDisable
-)
-
-type Options struct {
-	Hostname  string
-	Address   string
-	HttpPort  int
-	HttpsPort int
-	CacheDir  string
-	Proxy     NetbootOption
-	Template  *Template
 }
 
 func expandFilename(filename string) (string, error) {
@@ -81,93 +62,80 @@ func expandFilename(filename string) (string, error) {
 	return filepath.Clean(filename), nil
 }
 
-func NewServer(viperPrefix string, options *Options) (*Server, error) {
-	if viperPrefix == "" {
-		viperPrefix = "netboot_server"
+func getViperPrefix() string {
+	prefix := "netboot.server."
+	if ProgramName() == "netboot" {
+		prefix = "server."
 	}
-	viper.SetDefault(viperPrefix+".hostname", DEFAULT_HOSTNAME)
-	viper.SetDefault(viperPrefix+".address", DEFAULT_ADDRESS)
-	viper.SetDefault(viperPrefix+".https_port", DEFAULT_HTTPS_PORT)
-	viper.SetDefault(viperPrefix+".http_port", DEFAULT_HTTP_PORT)
-	viper.SetDefault(viperPrefix+".shutdown_timeout_seconds", DEFAULT_SHUTDOWN_TIMEOUT_SECONDS)
+	return prefix
+}
+
+func NewNetbootServer(template *Template) (*NetbootServer, error) {
+	viperPrefix := getViperPrefix()
+	ViperSetDefault(viperPrefix+"hostname", DEFAULT_HOSTNAME)
+	ViperSetDefault(viperPrefix+"bind_address", DEFAULT_ADDRESS)
+	ViperSetDefault(viperPrefix+"https_port", DEFAULT_HTTPS_PORT)
+	ViperSetDefault(viperPrefix+"http_port", DEFAULT_HTTP_PORT)
+	ViperSetDefault(viperPrefix+"shutdown_timeout_seconds", DEFAULT_SHUTDOWN_TIMEOUT_SECONDS)
 	userCache, err := os.UserCacheDir()
 	if err != nil {
 		return nil, err
 	}
-	viper.SetDefault(viperPrefix+".cache_dir", filepath.Join(userCache, "netboot"))
-	if options == nil {
-		options = &Options{}
-	}
+	ViperSetDefault(viperPrefix+"cache_dir", filepath.Join(userCache, "netboot"))
 
-	if options.Address == "" {
-		options.Address = viper.GetString(viperPrefix + ".address")
-	}
-	if options.HttpsPort == 0 {
-		options.HttpsPort = viper.GetInt(viperPrefix + ".https_port")
-	}
-	if options.HttpPort == 0 {
-		options.HttpPort = viper.GetInt(viperPrefix + ".http_port")
-	}
-	if options.CacheDir == "" {
-		options.CacheDir = viper.GetString(viperPrefix + ".cache_dir")
-	}
-	hostCache, err := NewHostCache(options.CacheDir, options.Template)
 	if err != nil {
 		return nil, err
 	}
-	s := Server{
-		Address:                options.Address,
-		HttpPort:               options.HttpPort,
-		HttpsPort:              options.HttpsPort,
-		verbose:                viper.GetBool(viperPrefix + ".verbose"),
-		debug:                  viper.GetBool(viperPrefix + ".debug"),
-		hosts:                  hostCache,
+	s := NetbootServer{
+		Address:                ViperGetString(viperPrefix + "bind_address"),
+		HttpPort:               ViperGetInt(viperPrefix + "http_port"),
+		HttpsPort:              ViperGetInt(viperPrefix + "https_port"),
+		verbose:                ViperGetBool("verbose"),
+		debug:                  ViperGetBool("debug"),
 		shutdown:               make(chan struct{}, 1),
-		NetbootDir:             options.CacheDir,
-		shutdownTimeoutSeconds: viper.GetInt(viperPrefix + ".shutdown_timeout_seconds"),
-		viperPrefix:            viperPrefix,
+		NetbootDir:             ViperGetString(viperPrefix + "cache_dir"),
+		shutdownTimeoutSeconds: ViperGetInt(viperPrefix + "shutdown_timeout_seconds"),
+		proxy:                  ViperGetBool(viperPrefix + "enable_proxy"),
 	}
 
-	s.caFile, err = expandFilename(viper.GetString(viperPrefix + ".ca"))
+	s.caFile, err = expandFilename(ViperGetString(viperPrefix + "ca"))
 	if err != nil {
 		return nil, err
 	}
-	s.certFile, err = expandFilename(viper.GetString(viperPrefix + ".cert"))
+	s.certFile, err = expandFilename(ViperGetString(viperPrefix + "cert"))
 	if err != nil {
 		return nil, err
 	}
-	s.keyFile, err = expandFilename(viper.GetString(viperPrefix + ".key"))
+	s.keyFile, err = expandFilename(ViperGetString(viperPrefix + "key"))
 	if err != nil {
 		return nil, err
 	}
 
-	switch options.Proxy {
-	case NetbootOptionEnable:
-		s.proxy = true
-	case NetbootOptionDisable:
-		s.proxy = false
-	default:
-		s.proxy = viper.GetBool(viperPrefix + ".enable_proxy")
+	hostCache, err := NewHostCache(s.NetbootDir, template, s.HttpPort, s.HttpsPort, s.proxy)
+	if err != nil {
+		return nil, err
 	}
+	s.hosts = hostCache
 
-	s.hosts.httpPort = s.HttpPort
-	s.hosts.httpsPort = s.HttpsPort
-	s.hosts.proxy = s.proxy
+	if ViperGetBool("verbose") {
+		log.Printf("NetbootServer config: %s\n", FormatJSON(s.GetConfig()))
+	}
 
 	return &s, nil
 }
 
-func (s *Server) GetConfig() map[string]any {
+func (s *NetbootServer) GetConfig() map[string]any {
+	prefix := ViperKey(getViperPrefix())
 	cfg := make(map[string]any)
 	for _, key := range viper.AllKeys() {
-		if strings.HasPrefix(key, s.viperPrefix+".") {
+		if strings.HasPrefix(key, prefix) {
 			cfg[key] = viper.Get(key)
 		}
 	}
 	return cfg
 }
 
-func (s *Server) Stop() error {
+func (s *NetbootServer) Stop() error {
 	log.Println("requesting shutdown")
 	s.shutdown <- struct{}{}
 	log.Println("waiting for shutdown")
@@ -176,7 +144,7 @@ func (s *Server) Stop() error {
 	return nil
 }
 
-func (s *Server) Start() error {
+func (s *NetbootServer) Start() error {
 
 	httpMux := http.NewServeMux()
 	httpMux.HandleFunc("GET /", s.hosts.RootHandler)
@@ -299,7 +267,7 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) Run(message string) error {
+func (s *NetbootServer) Run(message string) error {
 	err := s.Start()
 	if err != nil {
 		return err

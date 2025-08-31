@@ -31,26 +31,42 @@ POSSIBILITY OF SUCH DAMAGE.
 package cmd
 
 import (
-	"os"
-
+	"github.com/rstms/boxen-template/template"
+	"github.com/rstms/netboot/server"
 	"github.com/spf13/cobra"
 )
 
-var rootCmd = &cobra.Command{
-	Version: "0.1.2",
-	Use:     "netboot",
-	Short:   "netboot server ",
+var serverCmd = &cobra.Command{
+	Use:   "server",
+	Short: "run netboot server",
 	Long: `
-netboot server CLI
+Run the netboot HTTPS server, serving the netboot API endpoints and the files
+requested by the netboot IPXE bootstrap.
 `,
+	Run: func(cmd *cobra.Command, args []string) {
+		server, err := server.NewNetbootServer(
+			&server.Template{
+				Certs:  template.Certs,
+				Dist:   template.Dist,
+				Ipxe:   template.Ipxe,
+				Mkboot: template.Mkboot,
+			},
+		)
+		cobra.CheckErr(err)
+		var message string
+		if ViperGetBool("verbose") {
+			message = "CTRL-C to exit"
+		}
+		err = server.Run(message)
+		cobra.CheckErr(err)
+	},
 }
 
-func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
-		os.Exit(1)
-	}
-}
 func init() {
-	CobraInit(rootCmd)
+	CobraAddCommand(rootCmd, rootCmd, serverCmd)
+	OptionString(serverCmd, "bind-address", "a", server.DEFAULT_ADDRESS, "listen bind address")
+	OptionString(serverCmd, "http-port", "p", server.DEFAULT_HTTP_PORT, "http listen port")
+	OptionString(serverCmd, "https-port", "P", server.DEFAULT_HTTPS_PORT, "https listen port")
+	OptionSwitch(serverCmd, "foreground", "f", "run in foreground")
+	OptionSwitch(serverCmd, "enable-proxy", "", "enable http proxy")
 }

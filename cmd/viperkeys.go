@@ -44,7 +44,7 @@ var viperkeysCmd = &cobra.Command{
 output default viper config keys and values
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		daemon, err := server.NewServer("", nil)
+		daemon, err := server.NewNetbootServer(nil)
 		cobra.CheckErr(err)
 		cfg := daemon.GetConfig()
 		for k, v := range cfg {

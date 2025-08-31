@@ -6,11 +6,23 @@ import (
 	common "github.com/rstms/go-common"
 )
 
+type APIClient interface {
+	Close()
+	Get(path string, response interface{}) (string, error)
+	Post(path string, request, response interface{}, headers *map[string]string) (string, error)
+	Put(path string, request, response interface{}, headers *map[string]string) (string, error)
+	Delete(path string, response interface{}) (string, error)
+}
+
 type CobraCommand interface {
 }
 
 type Sendmail interface {
 	Send(to, from, subject string, body []byte) error
+}
+
+func NewAPIClient(prefix, url, certFile, keyFile, caFile string, headers *map[string]string) (APIClient, error) {
+	return common.NewAPIClient(prefix, url, certFile, keyFile, caFile, headers)
 }
 
 func OptionKey(cobraCmd CobraCommand, key string) string {
@@ -113,6 +125,10 @@ func ViperKey(key string) string {
 	return common.ViperKey(key)
 }
 
+func ViperGet(key string) any {
+	return common.ViperGet(key)
+}
+
 func ViperGetBool(key string) bool {
 	return common.ViperGetBool(key)
 }
@@ -123,6 +139,10 @@ func ViperGetString(key string) string {
 
 func ViperGetStringSlice(key string) []string {
 	return common.ViperGetStringSlice(key)
+}
+
+func ViperGetStringMapString(key string) map[string]string {
+	return common.ViperGetStringMapString(key)
 }
 
 func ViperGetInt(key string) int {
