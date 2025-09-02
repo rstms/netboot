@@ -6,7 +6,7 @@ require (
 	github.com/cavaliergopher/cpio v1.0.1
 	github.com/diskfs/go-diskfs v1.6.0
 	github.com/rstms/boxen-template v0.0.4
-	github.com/rstms/go-common v0.2.22
+	github.com/rstms/go-common v0.2.23
 	github.com/rstms/go-fs v0.0.4
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
