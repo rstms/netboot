@@ -222,19 +222,26 @@ func (s *NetbootServer) Start() error {
 	go func() {
 		defer log.Println("HTTPS server exiting")
 		defer s.wg.Done()
-		log.Printf("HTTPS server listening on %s\n", httpsServer.Addr)
+		msg := fmt.Sprintf("HTTPS server listening on %s\n", httpsServer.Addr)
+		log.Println(msg)
+		if s.verbose {
+			fmt.Println(msg)
+		}
 		err := httpsServer.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalln("ListenAndServeTLS failed: ", err)
 		}
-		//log.Println("returned from ListenAndServeTLS")
 	}()
 
 	s.wg.Add(1)
 	go func() {
 		defer log.Println("HTTP server exiting")
 		defer s.wg.Done()
-		log.Printf("HTTP server listening on %s\n", httpServer.Addr)
+		msg := fmt.Sprintf("HTTP server listening on %s\n", httpServer.Addr)
+		log.Println(msg)
+		if s.verbose {
+			fmt.Println(msg)
+		}
 		err := httpServer.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalln("ListenAndServe failed: ", err)
@@ -267,17 +274,28 @@ func (s *NetbootServer) Start() error {
 	return nil
 }
 
-func (s *NetbootServer) Run(message string) error {
+func (s *NetbootServer) Run() error {
 	err := s.Start()
 	if err != nil {
 		return err
 	}
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	if message != "" {
-		fmt.Println(message)
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, syscall.SIGINT)
+	sigterm := make(chan os.Signal, 1)
+	signal.Notify(sigterm, syscall.SIGTERM)
+	if s.verbose {
+		fmt.Println("CTRL-C to exit")
 	}
-	<-sigs
-	fmt.Println("received shutdown signal")
+	var message string
+	select {
+	case <-sigint:
+		message = "received SIGINT"
+	case <-sigterm:
+		message = "received SIGTERM"
+	}
+	if s.verbose {
+		fmt.Printf("\n%s\n", message)
+	}
+	log.Println(message)
 	return s.Stop()
 }

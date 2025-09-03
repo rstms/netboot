@@ -68,11 +68,12 @@ type DeleteResponse struct {
 	Files   []string `json:"files"`
 }
 
-var MAC_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`)
+var MAC_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa-f]{2})$`)
+var NORMALIZED_MAC_PATTERN = regexp.MustCompile(`^[0-9a-f]{12}$`)
 var IPXE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\.ipxe$`)
 var TARBALL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\.tgz$`)
 var ALPINE_VERSION_PATTERN = regexp.MustCompile(`([0-9][0-9]*)\.([0-9][0-9]*)\.([0-9][0-9]*)$`)
-var APKOVL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\.apkovl\.tar\.gz$`)
+var APKOVL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa-f]{2})\.apkovl\.tar\.gz$`)
 
 const htmlPrefix = `
 <!DOCTYPE html>
@@ -220,17 +221,18 @@ func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, co
 
 // return value for possible client access list validation
 func (c *HostCache) validateHttpRequest(w http.ResponseWriter, r *http.Request) bool {
-	log.Printf("Request: HTTP %s %s %s\n", r.RemoteAddr, r.Method, r.URL)
+	// FIXME: source address filtering goes here
+	log.Printf("%s -> netboot HTTP %s %s\n", r.RemoteAddr, r.Method, r.URL.Path)
 	return true
 }
 
 func (c *HostCache) requireClientCert(w http.ResponseWriter, r *http.Request) bool {
 	cert := c.checkClientCert(w, r)
-	clientCN := "<no_client_cert>"
+	clientCN := "none"
 	if cert != nil {
 		clientCN = cert.Subject.String()
 	}
-	log.Printf("Request: TLS %s %s %s %s\n", clientCN, r.RemoteAddr, r.Method, r.URL.Path)
+	log.Printf("%s CN=%s -> netboot HTTPS %s %s\n", r.RemoteAddr, clientCN, r.Method, r.URL.Path)
 	if cert == nil {
 		Warning("Missing client certificate: %s %s %s", r.RemoteAddr, r.Method, r.URL)
 		fail(w, "authorization failed", http.StatusForbidden)
@@ -245,11 +247,12 @@ func (c *HostCache) optionalClientCert(w http.ResponseWriter, r *http.Request) *
 	if cert != nil {
 		clientCN = cert.Subject.String()
 	}
-	log.Printf("Request: TLS %s %s %s %s\n", clientCN, r.RemoteAddr, r.Method, r.URL.Path)
+	log.Printf("%s CN=%s -> netboot HTTPS %s %s\n", r.RemoteAddr, clientCN, r.Method, r.URL.Path)
 	return cert
 }
 
 func (c *HostCache) checkClientCert(w http.ResponseWriter, r *http.Request) *x509.Certificate {
+	// FIXME: source address filtering goes here
 	switch {
 	case r.TLS == nil:
 	case r.TLS.PeerCertificates == nil || len(r.TLS.PeerCertificates) < 1:
@@ -261,13 +264,12 @@ func (c *HostCache) checkClientCert(w http.ResponseWriter, r *http.Request) *x50
 
 func fail(w http.ResponseWriter, message string, status int) {
 
-	log.Printf("Fail:  [%d] %s\n", status, message)
+	log.Printf("<- netboot fail [%d] %s\n", status, message)
 	http.Error(w, message, status)
 }
 
-func respond(w http.ResponseWriter, response any) {
-	log.Printf("Response:  [200] %v\n", response)
-
+func respond(w http.ResponseWriter, label string, response any) {
+	log.Printf("<- netboot response [200] %s\n", label)
 	json.NewEncoder(w).Encode(response)
 }
 
@@ -344,35 +346,36 @@ func (c *HostCache) GDLHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	http.ServeFileFS(w, r, c.template.Dist, gdlPathname)
 }
 
-func (c *HostCache) checkPath(prefix string, w http.ResponseWriter, r *http.Request) (string, bool) {
+func (c *HostCache) checkPath(prefix string, w http.ResponseWriter, r *http.Request) (string, string, bool) {
 	dir, name := path.Split(r.URL.Path)
 	if dir != prefix {
 		fail(w, "invalid path", http.StatusBadRequest)
-		return "", false
+		return "", "", false
 
 	}
-	base, ext, ok := strings.Cut(name, ".")
+	mac, ext, ok := strings.Cut(name, ".")
 	if !ok {
 		Warning("filename missing exension: %s", r.URL.Path)
 		fail(w, "invalid path", http.StatusBadRequest)
-		return "", false
+		return "", "", false
 	}
-	if !MAC_PATTERN.MatchString(base) {
+	if !MAC_PATTERN.MatchString(mac) {
 		Warning("filename not MAC address: %s", r.URL.Path)
 		fail(w, "invalid path", http.StatusBadRequest)
-		return "", false
+		return "", "", false
 	}
-	if APKOVL_PATTERN.MatchString(base) {
+	// FIXME: check if this is working with xx:xx:xx:xx:xx:xx.apkovl.tar.gz
+	if APKOVL_PATTERN.MatchString(name) {
 		ext = "apkovl.tar.gz"
 	}
-	return strings.ToLower(ext), true
+	return normalizeAddress(mac), strings.ToLower(ext), true
 }
 
 func (c *HostCache) SanBootHandler(w http.ResponseWriter, r *http.Request) {
 	if !c.validateHttpRequest(w, r) {
 		return
 	}
-	ext, ok := c.checkPath("/san/", w, r)
+	mac, ext, ok := c.checkPath("/san/", w, r)
 	if !ok {
 		return
 	}
@@ -381,7 +384,7 @@ func (c *HostCache) SanBootHandler(w http.ResponseWriter, r *http.Request) {
 		// IPXE sanboot command from the OpenBSD autoexec.ipxe
 		// FIXME: verify that this request follows a very recent client-cert validated request for MAC.iso from the same source
 		// it is possible that the ipxe client will be reusing the same session - see if we can set a cookie and check for it
-		http.ServeFile(w, r, filepath.Join(c.cacheDir, strings.ReplaceAll(r.URL.Path, "/san/", "/ipxe/")))
+		http.ServeFile(w, r, filepath.Join(c.cacheDir, "ipxe", mac+"."+ext))
 		return
 	}
 	Warning("unexpected sanboot request: %s", r.URL.Path)
@@ -399,13 +402,13 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if !c.requireClientCert(w, r) {
 		return
 	}
-	ext, ok := c.checkPath("/ipxe/", w, r)
+	mac, ext, ok := c.checkPath("/ipxe/", w, r)
 	if !ok {
 		return
 	}
 	switch ext {
 	case "iso", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "postinstall":
-		http.ServeFile(w, r, filepath.Join(c.cacheDir, r.URL.Path))
+		http.ServeFile(w, r, filepath.Join(c.cacheDir, "ipxe", mac+"."+ext))
 		return
 	}
 	Warning("unexpected ipxe request: %s", r.URL.Path)
@@ -552,7 +555,7 @@ func (c *HostCache) UploadPackageHandlerTLS(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	respond(w, Response{Message: fmt.Sprintf("%v bytes written", fileBytes)})
+	respond(w, "UploadResponse", Response{Message: fmt.Sprintf("%v bytes written", fileBytes)})
 }
 
 // copy file to temp dir, add to bootfiles, emit log message
@@ -592,6 +595,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		fail(w, "invalid MAC address", http.StatusBadRequest)
 		return
 	}
+	config.Address = normalizeAddress(config.Address)
 
 	log.Printf("adding host %s %s %s\n", config.Address, config.OS, config.Version)
 
@@ -676,7 +680,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respond(w, AddResponse{Message: fmt.Sprintf("%s configured", config.Address), ISO: booturl(netbootURL, isoFile), Files: bootFiles})
+	respond(w, "AddResponse", AddResponse{Message: fmt.Sprintf("%s configured", config.Address), ISO: booturl(netbootURL, isoFile), Files: bootFiles})
 }
 
 func booturl(urlBase, pathname string) string {
@@ -725,9 +729,10 @@ func (c *HostCache) DeleteHostHandlerTLS(w http.ResponseWriter, r *http.Request)
 		fail(w, "invalid MAC address", http.StatusBadRequest)
 		return
 	}
-	log.Printf("DeleteHostHandler setting MAC=%s IP=''\n", request.Address)
+	macAddr := normalizeAddress(request.Address)
+	log.Printf("DeleteHostHandler setting MAC=%s IP=''\n", macAddr)
 	c.cache[request.Address] = ""
-	c.deleteAddressFiles(request.Address, w)
+	c.deleteAddressFiles(macAddr, w)
 }
 
 func (c *HostCache) deleteAddressFiles(inAddress string, w http.ResponseWriter) {
@@ -747,7 +752,7 @@ func (c *HostCache) deleteAddressFiles(inAddress string, w http.ResponseWriter) 
 				fail(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			respond(w, DeleteResponse{Message: fmt.Sprintf("deleted: %d", len(files)), Files: files})
+			respond(w, "DeleteResponse", DeleteResponse{Message: fmt.Sprintf("deleted: %d", len(files)), Files: files})
 			return
 		}
 	}
@@ -781,7 +786,7 @@ func (c *HostCache) HostAddressQueryHandlerTLS(w http.ResponseWriter, r *http.Re
 	if len(segments) > 3 {
 		address := segments[3]
 		log.Printf("HostAddressQueryHandler returning MAC=%s IP=%s\n", address, c.cache[address])
-		respond(w, HostAddressResponse{MAC: address, IP: c.cache[address]})
+		respond(w, "HostAddressResponse", HostAddressResponse{MAC: address, IP: c.cache[address]})
 		return
 	}
 	fail(w, "invalid path", http.StatusBadRequest)
@@ -813,7 +818,7 @@ func (c *HostCache) ListHostsHandlerTLS(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	respond(w, HostListResponse{Message: fmt.Sprintf("config count: %d", len(addresses)), Addresses: addresses})
+	respond(w, "HostListResponse", HostListResponse{Message: fmt.Sprintf("config count: %d", len(addresses)), Addresses: addresses})
 }
 
 // Generate a url-customized netboot ISO returning generated iso pathname
@@ -893,4 +898,8 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, bootFiles []string
 	log.Printf("Generated %s\n", isoFile)
 	return isoFile, nil
 
+}
+
+func normalizeAddress(mac string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(mac, ":", ""), "-", ""))
 }

@@ -35,7 +35,7 @@ func NewMkBoot(tempDir, ipxeDir, url string, bootFiles []string, config *Config,
 // prepare OS-specific boot files in the cache directory named with MAC address
 func (m *MkBoot) Generate() (string, error) {
 
-	m.ISO = filepath.Join(m.IpxeDir, fmt.Sprintf("%s.iso", strings.ReplaceAll(m.Config.Address, ":", "-")))
+	m.ISO = filepath.Join(m.IpxeDir, fmt.Sprintf("%s.iso", m.Config.Address))
 	if IsFile(m.ISO) {
 		err := os.Remove(m.ISO)
 		if err != nil {

@@ -53,11 +53,7 @@ requested by the netboot IPXE bootstrap.
 			},
 		)
 		cobra.CheckErr(err)
-		var message string
-		if ViperGetBool("verbose") {
-			message = "CTRL-C to exit"
-		}
-		err = server.Run(message)
+		err = server.Run()
 		cobra.CheckErr(err)
 	},
 }
