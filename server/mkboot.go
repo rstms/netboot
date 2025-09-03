@@ -118,9 +118,9 @@ func (m *MkBoot) mkbootDebian() error {
 	}
 
 	// copy the debian installer kernel: /ipxe/MAC.kernel
-	srcKernal := filepath.Join(distDir, "linux")
-	dstKernal := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
-	err = CopyFileFromFS(dstKernal, srcKernal, m.template.Dist)
+	srcKernel := filepath.Join(distDir, "linux")
+	dstKernel := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
+	err = CopyFileFromFS(dstKernel, srcKernel, m.template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}

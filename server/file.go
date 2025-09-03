@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func IsFileFS(filesystem fs.FS, pathname string) bool {
@@ -45,6 +46,8 @@ func CopyFile(dstPathname, srcPathname string) error {
 }
 
 func CopyFileFromFS(dstPathname, srcPathname string, srcFS fs.FS) error {
+	log.Printf("CopyFileFromFS(%s, %s, %v)\n", dstPathname, srcPathname, srcFS)
+	srcPathname = strings.ReplaceAll(srcPathname, "\\", "/")
 	srcFile, err := srcFS.Open(srcPathname)
 	if err != nil {
 		return Fatal(err)
