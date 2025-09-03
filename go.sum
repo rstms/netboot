@@ -44,6 +44,10 @@ github.com/rstms/boxen-template v0.0.2 h1:DWvE1E5RnwEglsXuO9vgeQR4MnX2jQGZQ9YbVz
 github.com/rstms/boxen-template v0.0.2/go.mod h1:Sb/m1MEnTSNxWRCEvGWqZeTsdbpFJCqc2ADnoNnqSyQ=
 github.com/rstms/boxen-template v0.0.4 h1:DUb++KusfgCQp9P2g4RnHlOCllpIPGvKvhGXl/peDak=
 github.com/rstms/boxen-template v0.0.4/go.mod h1:0UMs05WTTMGbqHCIdngaQnveRJneWUgSDnfoFD2Y2J8=
+github.com/rstms/boxen-template v0.0.7 h1:KTeDcJdDgPEZixMYZkHDDF6Hl1XaIP88UjCEIhiWNic=
+github.com/rstms/boxen-template v0.0.7/go.mod h1:0UMs05WTTMGbqHCIdngaQnveRJneWUgSDnfoFD2Y2J8=
+github.com/rstms/boxen-template v0.0.8 h1:4kRcGKaJukN0jUtdLdXGCIgSNzXCBUDxIpSiT5dUOMI=
+github.com/rstms/boxen-template v0.0.8/go.mod h1:0UMs05WTTMGbqHCIdngaQnveRJneWUgSDnfoFD2Y2J8=
 github.com/rstms/go-common v0.2.1 h1:UyrbJWbhqAaM52TFFsqsPTHDnwr+xJuVYjD8Nyoy/PE=
 github.com/rstms/go-common v0.2.1/go.mod h1:X+YExXFyL7HOZwV8fB3VCqfehcBe2IqSaKzsacJQjb0=
 github.com/rstms/go-common v0.2.2 h1:Jw3aJDruFf525GeUZjWT7vt1+/GAnjDaAPq94bSPOXA=
