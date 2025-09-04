@@ -222,14 +222,10 @@ func (s *NetbootServer) Start() error {
 	go func() {
 		defer log.Println("HTTPS server exiting")
 		defer s.wg.Done()
-		msg := fmt.Sprintf("HTTPS server listening on %s\n", httpsServer.Addr)
-		log.Println(msg)
-		if s.verbose {
-			fmt.Println(msg)
-		}
+		log.Printf("HTTPS server listening on %s\n", httpsServer.Addr)
 		err := httpsServer.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
-			log.Fatalln("ListenAndServeTLS failed: ", err)
+			log.Fatalf("ListenAndServeTLS failed: %v", err)
 		}
 	}()
 
@@ -237,21 +233,15 @@ func (s *NetbootServer) Start() error {
 	go func() {
 		defer log.Println("HTTP server exiting")
 		defer s.wg.Done()
-		msg := fmt.Sprintf("HTTP server listening on %s\n", httpServer.Addr)
-		log.Println(msg)
-		if s.verbose {
-			fmt.Println(msg)
-		}
+		fmt.Printf("HTTP server listening on %s\n", httpServer.Addr)
 		err := httpServer.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
-			log.Fatalln("ListenAndServe failed: ", err)
+			log.Fatalf("ListenAndServe failed: %v", err)
 		}
-		//log.Println("returned from ListenAndServe")
 	}()
 
 	s.wg.Add(1)
 	go func() {
-		//defer log.Println("exiting closer")
 		defer s.wg.Done()
 		<-s.shutdown
 		log.Println("received shutdown request")
@@ -261,13 +251,13 @@ func (s *NetbootServer) Start() error {
 		log.Println("shutting down HTTPS server")
 		err := httpsServer.Shutdown(ctx)
 		if err != nil {
-			log.Fatalln("HTTPS Server Shutdown failed: ", err)
+			log.Fatalf("HTTPS Server Shutdown failed: %v", err)
 		}
 
 		log.Println("shutting down HTTP server")
 		err = httpServer.Shutdown(ctx)
 		if err != nil {
-			log.Fatalln("HTTP Server Shutdown failed: ", err)
+			log.Fatalf("HTTP Server Shutdown failed: %v", err)
 		}
 	}()
 
@@ -286,16 +276,11 @@ func (s *NetbootServer) Run() error {
 	if s.verbose {
 		fmt.Println("CTRL-C to exit")
 	}
-	var message string
 	select {
 	case <-sigint:
-		message = "received SIGINT"
+		log.Println("received SIGINT")
 	case <-sigterm:
-		message = "received SIGTERM"
+		log.Println("received SIGTERM")
 	}
-	if s.verbose {
-		fmt.Printf("\n%s\n", message)
-	}
-	log.Println(message)
 	return s.Stop()
 }
