@@ -136,11 +136,11 @@ func (s *NetbootServer) GetConfig() map[string]any {
 }
 
 func (s *NetbootServer) Stop() error {
-	log.Println("requesting shutdown")
+	log.Println("[netboot] requesting shutdown")
 	s.shutdown <- struct{}{}
-	log.Println("waiting for shutdown")
+	log.Println("[netboot] waiting for shutdown")
 	s.wg.Wait()
-	log.Println("shutdown complete")
+	log.Println("[netboot] shutdown complete")
 	return nil
 }
 
@@ -220,9 +220,9 @@ func (s *NetbootServer) Start() error {
 
 	s.wg.Add(1)
 	go func() {
-		defer log.Println("HTTPS server exiting")
+		defer log.Println("[netboot] HTTPS server exiting")
 		defer s.wg.Done()
-		log.Printf("HTTPS server listening on %s\n", httpsServer.Addr)
+		log.Printf("[netboot] HTTPS server listening on %s\n", httpsServer.Addr)
 		err := httpsServer.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("ListenAndServeTLS failed: %v", err)
@@ -231,9 +231,9 @@ func (s *NetbootServer) Start() error {
 
 	s.wg.Add(1)
 	go func() {
-		defer log.Println("HTTP server exiting")
+		defer log.Println("[netboot] HTTP server exiting")
 		defer s.wg.Done()
-		fmt.Printf("HTTP server listening on %s\n", httpServer.Addr)
+		fmt.Printf("[netboot] HTTP server listening on %s\n", httpServer.Addr)
 		err := httpServer.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("ListenAndServe failed: %v", err)
@@ -244,17 +244,17 @@ func (s *NetbootServer) Start() error {
 	go func() {
 		defer s.wg.Done()
 		<-s.shutdown
-		log.Println("received shutdown request")
+		log.Println("[netboot] received shutdown request")
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.shutdownTimeoutSeconds)*time.Second)
 		defer cancel()
 
-		log.Println("shutting down HTTPS server")
+		log.Println("[netboot] shutting down HTTPS server")
 		err := httpsServer.Shutdown(ctx)
 		if err != nil {
 			log.Fatalf("HTTPS Server Shutdown failed: %v", err)
 		}
 
-		log.Println("shutting down HTTP server")
+		log.Println("[netboot] shutting down HTTP server")
 		err = httpServer.Shutdown(ctx)
 		if err != nil {
 			log.Fatalf("HTTP Server Shutdown failed: %v", err)
@@ -278,9 +278,9 @@ func (s *NetbootServer) Run() error {
 	}
 	select {
 	case <-sigint:
-		log.Println("received SIGINT")
+		log.Println("[netboot] received SIGINT")
 	case <-sigterm:
-		log.Println("received SIGTERM")
+		log.Println("[netboot] received SIGTERM")
 	}
 	return s.Stop()
 }
