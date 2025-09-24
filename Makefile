@@ -1,5 +1,7 @@
 # go makefile
 
+include make/osvars.make
+
 # common config
 program != basename $$(pwd)
 version != cat VERSION
