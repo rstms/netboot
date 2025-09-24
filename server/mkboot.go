@@ -134,7 +134,7 @@ func (m *MkBoot) mkbootDebian() error {
 	// will be patched into the initrd by rstms-netboot-debian.ipxe as /cacerts.tgz
 	tarballPathname := filepath.Join(m.IpxeDir, fmt.Sprintf("%s.tgz", m.Config.Address))
 	cacerts := filepath.Join(m.IpxeDir, m.Config.Address+".cacerts")
-	err = files.ExtractTarballFile(cacerts, "/root/cacerts.tgz", tarballPathname)
+	err = files.ExtractTarballFile(cacerts, "root/cacerts.tgz", tarballPathname)
 	if err != nil {
 		return Fatal(err)
 	}
