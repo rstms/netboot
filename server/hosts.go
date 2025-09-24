@@ -109,7 +109,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 	ViperSetDefault(prefix+"mirror.openbsd", DEFAULT_OPENBSD_MIRROR)
 
 	c := HostCache{
-		Name:         "netboot-server",
+		Name:         "netboot",
 		cacheDir:     dir,
 		httpPort:     httpPort,
 		httpsPort:    httpsPort,
