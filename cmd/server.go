@@ -31,7 +31,6 @@ POSSIBILITY OF SUCH DAMAGE.
 package cmd
 
 import (
-	"github.com/rstms/boxen-template/template"
 	"github.com/rstms/netboot/server"
 	"github.com/spf13/cobra"
 )
@@ -44,14 +43,7 @@ Run the netboot HTTPS server, serving the netboot API endpoints and the files
 requested by the netboot IPXE bootstrap.
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		server, err := server.NewNetbootServer(
-			&server.Template{
-				Certs:  template.Certs,
-				Dist:   template.Dist,
-				Ipxe:   template.Ipxe,
-				Mkboot: template.Mkboot,
-			},
-		)
+		server, err := server.NewNetbootServer()
 		cobra.CheckErr(err)
 		err = server.Run()
 		cobra.CheckErr(err)
@@ -60,9 +52,4 @@ requested by the netboot IPXE bootstrap.
 
 func init() {
 	CobraAddCommand(rootCmd, rootCmd, serverCmd)
-	OptionString(serverCmd, "bind-address", "a", server.DEFAULT_ADDRESS, "listen bind address")
-	OptionString(serverCmd, "http-port", "p", server.DEFAULT_HTTP_PORT, "http listen port")
-	OptionString(serverCmd, "https-port", "P", server.DEFAULT_HTTPS_PORT, "https listen port")
-	OptionSwitch(serverCmd, "foreground", "f", "run in foreground")
-	OptionSwitch(serverCmd, "enable-proxy", "", "enable http proxy")
 }

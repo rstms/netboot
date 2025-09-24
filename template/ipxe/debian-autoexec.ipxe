@@ -1,0 +1,42 @@
+#!ipxe
+
+# debian autoconfig.ipxe
+
+set netboot https://netboot.rstms.net
+set kernel_params
+set serial_params
+
+iseq ${cls} serial && goto ignore_cls ||
+set cls:hex 1b:5b:4a  # ANSI clear screen sequence - "^[[J"
+set cls ${cls:string}
+:ignore_cls
+
+dhcp && goto dhcp_ok ||
+echo "DHCP configuration failed, rebooting..."
+sleep 5
+reboot
+:dhcp_ok
+
+ntp pool.ntp.org && goto ntp_ok ||
+echo "NTP clock reset failed, rebooting..."
+sleep 5
+reboot
+:ntp_ok
+
+echo netboot=${netboot}
+echo mac=${net0/mac}
+echo ip=${net0/ip}
+
+set netcfg interface=eth0 net.ifnames=0
+set install_params auto=true priority=critical biosdevname=0
+set bootfile ${netboot}/ipxe/${net0/mac}
+
+imgfree
+kernel ${bootfile}.kernel ${netcfg} ${install_params} ${serial_params} ${kernel_params}
+initrd ${bootfile}.initrd
+initrd ${bootfile}.response /preseed.cfg
+initrd ${bootfile}.cacerts /cacerts.tgz
+initrd ${bootfile}.postinstall /rc.netboot mode=0700
+boot
+
+exit 0

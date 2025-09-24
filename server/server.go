@@ -18,9 +18,10 @@ import (
 	"time"
 )
 
-const Version = "1.0.0"
-const DEFAULT_HOSTNAME = "localhost"
-const DEFAULT_ADDRESS = "127.0.0.1"
+const Version = "0.7.10"
+
+const DEFAULT_SERVER_NAME = "localhost"
+const DEFAULT_BIND_ADDRESS = "127.0.0.1"
 const DEFAULT_HTTPS_PORT = "4443"
 const DEFAULT_HTTP_PORT = "4444"
 const DEFAULT_SHUTDOWN_TIMEOUT_SECONDS = 10
@@ -33,7 +34,8 @@ type Template struct {
 }
 
 type NetbootServer struct {
-	Hostname               string
+	Name                   string
+	ServerName             string
 	Address                string
 	HttpsPort              int
 	HttpPort               int
@@ -70,23 +72,29 @@ func getViperPrefix() string {
 	return prefix
 }
 
-func NewNetbootServer(template *Template) (*NetbootServer, error) {
+func NewNetbootServer() (*NetbootServer, error) {
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		return nil, Fatal(err)
+	}
+	userCacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return nil, err
+	}
 	viperPrefix := getViperPrefix()
-	ViperSetDefault(viperPrefix+"hostname", DEFAULT_HOSTNAME)
-	ViperSetDefault(viperPrefix+"bind_address", DEFAULT_ADDRESS)
+	ViperSetDefault(viperPrefix+"server_name", DEFAULT_SERVER_NAME)
+	ViperSetDefault(viperPrefix+"bind_address", DEFAULT_BIND_ADDRESS)
 	ViperSetDefault(viperPrefix+"https_port", DEFAULT_HTTPS_PORT)
 	ViperSetDefault(viperPrefix+"http_port", DEFAULT_HTTP_PORT)
 	ViperSetDefault(viperPrefix+"shutdown_timeout_seconds", DEFAULT_SHUTDOWN_TIMEOUT_SECONDS)
-	userCache, err := os.UserCacheDir()
-	if err != nil {
-		return nil, err
-	}
-	ViperSetDefault(viperPrefix+"cache_dir", filepath.Join(userCache, "netboot"))
+	ViperSetDefault(viperPrefix+"ca", filepath.Join(userConfigDir, ProgramName(), "keymaster.pem"))
+	ViperSetDefault(viperPrefix+"cert", filepath.Join(userConfigDir, ProgramName(), "netboot-server-cert.pem"))
+	ViperSetDefault(viperPrefix+"key", filepath.Join(userConfigDir, ProgramName(), "netboot-server-key.pem"))
+	ViperSetDefault(viperPrefix+"cache_dir", filepath.Join(userCacheDir, ProgramName()))
 
-	if err != nil {
-		return nil, err
-	}
 	s := NetbootServer{
+		Name:                   "netboot",
+		ServerName:             ViperGetString(viperPrefix + "server_name"),
 		Address:                ViperGetString(viperPrefix + "bind_address"),
 		HttpPort:               ViperGetInt(viperPrefix + "http_port"),
 		HttpsPort:              ViperGetInt(viperPrefix + "https_port"),
@@ -96,29 +104,19 @@ func NewNetbootServer(template *Template) (*NetbootServer, error) {
 		NetbootDir:             ViperGetString(viperPrefix + "cache_dir"),
 		shutdownTimeoutSeconds: ViperGetInt(viperPrefix + "shutdown_timeout_seconds"),
 		proxy:                  ViperGetBool(viperPrefix + "enable_proxy"),
+		caFile:                 ViperGetString(viperPrefix + "ca"),
+		certFile:               ViperGetString(viperPrefix + "cert"),
+		keyFile:                ViperGetString(viperPrefix + "key"),
 	}
 
-	s.caFile, err = expandFilename(ViperGetString(viperPrefix + "ca"))
-	if err != nil {
-		return nil, err
-	}
-	s.certFile, err = expandFilename(ViperGetString(viperPrefix + "cert"))
-	if err != nil {
-		return nil, err
-	}
-	s.keyFile, err = expandFilename(ViperGetString(viperPrefix + "key"))
-	if err != nil {
-		return nil, err
-	}
-
-	hostCache, err := NewHostCache(s.NetbootDir, template, s.HttpPort, s.HttpsPort, s.proxy)
+	hostCache, err := NewHostCache(s.NetbootDir, s.HttpPort, s.HttpsPort, s.proxy)
 	if err != nil {
 		return nil, err
 	}
 	s.hosts = hostCache
 
-	if ViperGetBool("verbose") {
-		log.Printf("NetbootServer config: %s\n", FormatJSON(s.GetConfig()))
+	if s.debug {
+		log.Printf("[%s] config: %s\n", s.Name, FormatJSON(s.GetConfig()))
 	}
 
 	return &s, nil
@@ -136,11 +134,11 @@ func (s *NetbootServer) GetConfig() map[string]any {
 }
 
 func (s *NetbootServer) Stop() error {
-	log.Println("[netboot] requesting shutdown")
+	log.Printf("[%s] requesting shutdown", s.Name)
 	s.shutdown <- struct{}{}
-	log.Println("[netboot] waiting for shutdown")
+	log.Printf("[%s] waiting for shutdown", s.Name)
 	s.wg.Wait()
-	log.Println("[netboot] shutdown complete")
+	log.Printf("[%s] shutdown complete", s.Name)
 	return nil
 }
 
@@ -209,6 +207,7 @@ func (s *NetbootServer) Start() error {
 		}
 
 		httpsServer.TLSConfig = &tls.Config{
+			ServerName:   s.ServerName,
 			Certificates: []tls.Certificate{cert},
 			ClientAuth:   tls.VerifyClientCertIfGiven,
 			ClientCAs:    clientCertPool,
@@ -216,27 +215,27 @@ func (s *NetbootServer) Start() error {
 		//fmt.Printf("configured TLS: %s %s %s\n", caFile, certFile, keyFile)
 	}
 
-	log.Printf("netboot v%s started as PID %d\n", Version, os.Getpid())
+	log.Printf("[%s] v%s started as PID %d\n", s.Name, Version, os.Getpid())
 
 	s.wg.Add(1)
 	go func() {
-		defer log.Println("[netboot] HTTPS server exiting")
+		defer log.Printf("[%s] HTTPS server exiting", s.Name)
 		defer s.wg.Done()
-		log.Printf("[netboot] HTTPS server listening on %s\n", httpsServer.Addr)
+		log.Printf("[%s] HTTPS server listening on %s\n", s.Name, httpsServer.Addr)
 		err := httpsServer.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
-			log.Fatalf("ListenAndServeTLS failed: %v", err)
+			log.Fatalf("[%s] ListenAndServeTLS failed: %v", s.Name, err)
 		}
 	}()
 
 	s.wg.Add(1)
 	go func() {
-		defer log.Println("[netboot] HTTP server exiting")
+		defer log.Printf("[%s] HTTP server exiting", s.Name)
 		defer s.wg.Done()
-		fmt.Printf("[netboot] HTTP server listening on %s\n", httpServer.Addr)
+		log.Printf("[%s] HTTP server listening on %s\n", s.Name, httpServer.Addr)
 		err := httpServer.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
-			log.Fatalf("ListenAndServe failed: %v", err)
+			log.Fatalf("[%s] ListenAndServe failed: %v", s.Name, err)
 		}
 	}()
 
@@ -244,22 +243,25 @@ func (s *NetbootServer) Start() error {
 	go func() {
 		defer s.wg.Done()
 		<-s.shutdown
-		log.Println("[netboot] received shutdown request")
+		log.Printf("[%s] received shutdown request", s.Name)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.shutdownTimeoutSeconds)*time.Second)
 		defer cancel()
 
-		log.Println("[netboot] shutting down HTTPS server")
+		log.Printf("[%s] shutting down HTTPS server", s.Name)
 		err := httpsServer.Shutdown(ctx)
 		if err != nil {
-			log.Fatalf("HTTPS Server Shutdown failed: %v", err)
+			log.Fatalf("[%s] HTTPS Server Shutdown failed: %v", s.Name, err)
 		}
 
-		log.Println("[netboot] shutting down HTTP server")
+		log.Printf("[%s] shutting down HTTP server", s.Name)
 		err = httpServer.Shutdown(ctx)
 		if err != nil {
-			log.Fatalf("HTTP Server Shutdown failed: %v", err)
+			log.Fatalf("[%s] HTTP Server Shutdown failed: %v", s.Name, err)
 		}
 	}()
+
+	// FIXME: detect listening server port here instead of just sleeping
+	time.Sleep(1 * time.Second)
 
 	return nil
 }
@@ -278,9 +280,9 @@ func (s *NetbootServer) Run() error {
 	}
 	select {
 	case <-sigint:
-		log.Println("[netboot] received SIGINT")
+		log.Printf("[%s] received SIGINT", s.Name)
 	case <-sigterm:
-		log.Println("[netboot] received SIGTERM")
+		log.Printf("[%s] received SIGTERM", s.Name)
 	}
 	return s.Stop()
 }

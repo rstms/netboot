@@ -348,7 +348,7 @@ func writeCPIO(writer *cpio.Writer, data []byte) error {
 			data = data[:chunk]
 		} else {
 			if written != size {
-				panic("expected written==size")
+				return Fatalf("expected written(%d)==size(%d)", written, size)
 			}
 		}
 	}
@@ -357,40 +357,5 @@ func writeCPIO(writer *cpio.Writer, data []byte) error {
 		return Fatalf("write count (%d) mismatches size (%d)\n", written, size)
 	}
 
-	/*
-		err := writer.Flush()
-		if err != nil {
-			return Fatal(err)
-		}
-	*/
-
 	return nil
 }
-
-/*
-// in-to the cpio archive
-func copyIn(writer *cpio.Writer, header cpio.Header, data []byte) (int64, error) {
-
-	//fmt.Printf("adding: %s\n", header.Name)
-	err := writer.WriteHeader(&header)
-	if err != nil {
-		return 0, Fatal(err)
-	}
-
-	//fmt.Printf("\twrote header: %s type=%v, size=%d\n", header.Name, header.Mode, header.Size)
-
-	var count int64
-
-	if header.Mode.IsRegular() && header.Size > 0 {
-		buf := bytes.NewBuffer(data)
-		count, err = io.Copy(writer, buf)
-		if err != nil {
-			return 0, Fatal(err)
-		}
-		if count != header.Size {
-			return 0, Fatalf("write count (%d) mismatches header size (%d)\n", count, header.Size)
-		}
-	}
-	return count, nil
-}
-*/

@@ -77,3 +77,8 @@ sterile: clean
 run:
 	./netboot -vl-
 
+
+gen:
+	@cd template && $(MAKE)
+
+regen: clean gen

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -ueo pipefail
+version=$1
+arch=$2
+repo=$(pwd)
+user=$USER
+serial=no
+target=$3
+doas $repo/scripts/mkboot.openbsd $repo $version $arch $user $serial $target

@@ -2,8 +2,12 @@ package server
 
 import (
 	"fmt"
-	"github.com/rstms/netboot/bootimg"
+	"github.com/rstms/boxen/files"
+	"github.com/rstms/boxen/message"
+	"github.com/rstms/ffs/image"
 	"github.com/rstms/netboot/bootiso"
+	"github.com/rstms/netboot/template"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,19 +19,17 @@ type MkBoot struct {
 	IpxeDir   string
 	URL       string
 	BootFiles []string
-	Config    *Config
+	Config    *message.NetbootConfig
 	ISO       string
-	template  *Template
 }
 
-func NewMkBoot(tempDir, ipxeDir, url string, bootFiles []string, config *Config, template *Template) *MkBoot {
+func NewMkBoot(tempDir, ipxeDir, url string, bootFiles []string, config *message.NetbootConfig) *MkBoot {
 	m := MkBoot{
 		TempDir:   tempDir,
 		IpxeDir:   ipxeDir,
 		URL:       url,
 		BootFiles: bootFiles,
 		Config:    config,
-		template:  template,
 	}
 	return &m
 }
@@ -65,29 +67,56 @@ func (m *MkBoot) Generate() (string, error) {
 	return m.ISO, nil
 }
 
+func (m *MkBoot) checkDistDir() (string, error) {
+	// generate error if version/arch not present
+	distDir := filepath.Join("dist", m.Config.OS, m.Config.Version, m.Config.Arch)
+	log.Printf("checking distDir: %s\n", distDir)
+	if !files.IsDirFS(template.Dist, distDir) {
+		return "", Fatalf("unsupported: %s %s %s", m.Config.OS, m.Config.Version, m.Config.Arch)
+	}
+	return distDir, nil
+}
+
 func (m *MkBoot) mkbootOpenBSD() error {
 	log.Printf("mkbootOpenBSD: %s %s\n", m.Config.Version, m.Config.Arch)
 
-	// copy openbsd netboot iso: /ipxe/MAC.boot
-	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.iso", m.Config.Version, m.Config.Arch))
-	dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
-	err := CopyFileFromFS(dstBoot, srcBoot, m.template.Ipxe)
+	_, err := m.checkDistDir()
 	if err != nil {
 		return Fatal(err)
 	}
 
-	// add netboot.env to netboot iso bootfiles
-	m.BootFiles = append(m.BootFiles, filepath.Join(m.TempDir, "netboot.env"))
+	// unzip template customized openbsd netboot iso: /ipxe/MAC.boot
+	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.iso.gz", m.Config.Version, m.Config.Arch))
+	dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
+	log.Printf("mkbootOpenbsd: boot=%s\n", dstBoot)
+	err = files.UnzipFileFromFS(dstBoot, srcBoot, template.Ipxe)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	// openbsd ipxe netboot image: /ipxe/MAC.img
+	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
+	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
+	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
+	if err != nil {
+		return Fatal(err)
+	}
 
 	// add gdl??.tgz to netboot iso bootfiles
 	tag := strings.ReplaceAll(m.Config.Version, ".", "")
 	srcGdl := filepath.Join("dist", "openbsd", m.Config.Version, m.Config.Arch, "gdl"+tag+".tgz")
 	dstGdl := filepath.Join(m.TempDir, "gdl.tgz")
-	err = CopyFileFromFS(dstGdl, srcGdl, m.template.Dist)
+	log.Printf("mkbootOpenbsd: gdl=%s\n", dstGdl)
+	err = files.CopyFileFromFS(dstGdl, srcGdl, template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
 	m.BootFiles = append(m.BootFiles, dstGdl)
+
+	err = injectBootFiles(dstImage, m.BootFiles)
+	if err != nil {
+		return Fatal(err)
+	}
 
 	return m.buildISO()
 }
@@ -96,23 +125,25 @@ func (m *MkBoot) mkbootDebian() error {
 	log.Printf("mkbootDebian: %s %s\n", m.Config.Version, m.Config.Arch)
 
 	// generate error if version/arch not present
-	distDir := filepath.Join("dist", "debian", m.Config.Version, m.Config.Arch)
-	if !IsDirFS(m.template.Dist, distDir) {
-		return Fatalf("unsupported: Debian %s %s", m.Config.Version, m.Config.Arch)
+	distDir, err := m.checkDistDir()
+	if err != nil {
+		return Fatal(err)
 	}
 
-	// copy cacerts.tgz: /ipxe/MAC.cacerts
+	// copy cacerts.tgz from package tarball: /ipxe/MAC.cacerts
 	// will be patched into the initrd by rstms-netboot-debian.ipxe as /cacerts.tgz
+	tarballPathname := filepath.Join(m.IpxeDir, fmt.Sprintf("%s.tgz", m.Config.Address))
 	cacerts := filepath.Join(m.IpxeDir, m.Config.Address+".cacerts")
-	err := CopyFileFromFS(cacerts, filepath.Join("certs", "cacerts.tgz"), m.template.Certs)
+	err = files.ExtractTarballFile(cacerts, "/root/cacerts.tgz", tarballPathname)
 	if err != nil {
 		return Fatal(err)
 	}
 
 	// stage netboot.rc from template as /ipxe/MAC.postinstall
-	// NOTE: this IS NOT /postinstall from package.tgz (see alpine)
+	// NOTE: this IS NOT /postinstall from package.tgz (see mkbootAlpine)
 	postinstall := filepath.Join(m.IpxeDir, m.Config.Address+".postinstall")
-	err = CopyFileFromFS(postinstall, "mkboot/rc.netboot.debian", m.template.Mkboot)
+	log.Printf("mkbootDebian: postinstall=%s\n", postinstall)
+	err = files.CopyFileFromFS(postinstall, "mkboot/rc.netboot.debian", template.Mkboot)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -120,7 +151,8 @@ func (m *MkBoot) mkbootDebian() error {
 	// copy the debian installer kernel: /ipxe/MAC.kernel
 	srcKernel := filepath.Join(distDir, "linux")
 	dstKernel := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
-	err = CopyFileFromFS(dstKernel, srcKernel, m.template.Dist)
+	log.Printf("mkbootDebian: kernel=%s\n", dstKernel)
+	err = files.CopyFileFromFS(dstKernel, srcKernel, template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -128,7 +160,8 @@ func (m *MkBoot) mkbootDebian() error {
 	// copy the debian installer initrd: /ipxe/MAC.initrd
 	srcInitrd := filepath.Join(distDir, "initrd.gz")
 	dstInitrd := filepath.Join(m.IpxeDir, m.Config.Address+".initrd")
-	err = CopyFileFromFS(dstInitrd, srcInitrd, m.template.Dist)
+	log.Printf("mkbootDebian: initrd=%s\n", dstInitrd)
+	err = files.CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -147,16 +180,16 @@ func (m *MkBoot) mkbootAlpine() error {
 	major := match[1]
 	minor := match[2]
 
-	// generate error if version/arch not present
-	distDir := filepath.Join("dist", "alpine", m.Config.Version, m.Config.Arch)
-	if !IsDirFS(m.template.Dist, distDir) {
-		return Fatalf("unsupported: alpine %s %s", m.Config.Version, m.Config.Arch)
+	distDir, err := m.checkDistDir()
+	if err != nil {
+		return Fatal(err)
 	}
 
 	// copy the alpine netboot kernel: /ipxe/MAC.kernel
 	srcKernel := filepath.Join(distDir, "kernel")
 	dstKernel := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
-	err := CopyFileFromFS(dstKernel, srcKernel, m.template.Dist)
+	log.Printf("mkbootAlpine: kernel=%s\n", dstKernel)
+	err = files.CopyFileFromFS(dstKernel, srcKernel, template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -164,7 +197,8 @@ func (m *MkBoot) mkbootAlpine() error {
 	// copy the alpine netboot initrd: /ipxe/MAC.initrd
 	srcInitrd := filepath.Join(distDir, "initrd")
 	dstInitrd := filepath.Join(m.IpxeDir, m.Config.Address+".initrd")
-	err = CopyFileFromFS(dstInitrd, srcInitrd, m.template.Dist)
+	log.Printf("mkbootAlpine: initrd=%s\n", dstInitrd)
+	err = files.CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -172,77 +206,19 @@ func (m *MkBoot) mkbootAlpine() error {
 	// copy the alpine netboot modloop: /ipxe/MAC.modloop
 	srcModloop := filepath.Join(distDir, "modloop")
 	dstModloop := filepath.Join(m.IpxeDir, m.Config.Address+".modloop")
-	err = CopyFileFromFS(dstModloop, srcModloop, m.template.Dist)
+	log.Printf("mkbootAlpine: modloop=%s\n", dstModloop)
+	err = files.CopyFileFromFS(dstModloop, srcModloop, template.Dist)
 	if err != nil {
 		return Fatal(err)
 	}
 
 	// stage postinstall script: /ipxe/MAC.postinstall
 	// alpine rc.netboot downloads postinstall from the ipxe dir
-	// NOTE: this IS /postinstall from package.tgz (see debian)
+	// NOTE: this IS /postinstall from package.tgz (see mkbootDebian)
 	srcPostinstall := filepath.Join(m.TempDir, "postinstall")
 	dstPostinstall := filepath.Join(m.IpxeDir, m.Config.Address+".postinstall")
-	err = CopyFile(dstPostinstall, srcPostinstall)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	// generate overlay tarball
-
-	ovlDir := filepath.Join(m.TempDir, "apkovl")
-	err = os.Mkdir(ovlDir, 0755)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	etcDir := filepath.Join(ovlDir, "etc")
-	err = os.MkdirAll(filepath.Join(etcDir, "ssl"), 0755)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	err = os.WriteFile(filepath.Join(etcDir, ".default_boot_services"), []byte{}, 0644)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	err = os.MkdirAll(filepath.Join(etcDir, "runlevels", "default"), 0755)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	err = os.Symlink("/etc/init.d/local", filepath.Join(etcDir, "runlevels", "default", "local"))
-	if err != nil {
-		return Fatal(err)
-	}
-
-	apkDir := filepath.Join(etcDir, "apk")
-	err = os.Mkdir(apkDir, 0755)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	if !strings.HasPrefix(m.Config.Mirror, "http") {
-		return Fatalf("unexpected non-URL alpine mirror: %s", m.Config.Mirror)
-	}
-	repoData := fmt.Sprintf("%s/alpine/v%s.%s/main\n", m.Config.Mirror, major, minor)
-	repoData += fmt.Sprintf("%s/alpine/v%s.%s/community\n", m.Config.Mirror, major, minor)
-	err = os.WriteFile(filepath.Join(apkDir, "repositories"), []byte(repoData), 0644)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	localDir := filepath.Join(etcDir, "local.d")
-	err = os.Mkdir(localDir, 0755)
-	if err != nil {
-		return Fatal(err)
-	}
-	autostart := filepath.Join(localDir, "auto-setup-alpine.start")
-	err = CopyFileFromFS(autostart, filepath.Join("mkboot", "rc.netboot.alpine"), m.template.Mkboot)
-	if err != nil {
-		return Fatal(err)
-	}
-	err = os.Chmod(autostart, 0755)
+	log.Printf("mkbootAlpine: postinstall=%s\n", dstPostinstall)
+	err = files.CopyFile(dstPostinstall, srcPostinstall)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -250,8 +226,93 @@ func (m *MkBoot) mkbootAlpine() error {
 	// add netboot.env to netboot iso bootfiles
 	m.BootFiles = append(m.BootFiles, filepath.Join(m.TempDir, "netboot.env"))
 
+	// generate overlay tarball
+	modes := make(map[string]fs.FileMode)
+
+	ovlDir := filepath.Join(m.TempDir, "apkovl")
+	err = os.Mkdir(ovlDir, 0755)
+	if err != nil {
+		return Fatal(err)
+	}
+	modes[ovlDir] = 0755
+
+	etcDir := filepath.Join(ovlDir, "etc")
+	dir := filepath.Join(etcDir, "ssl")
+	err = os.MkdirAll(dir, 0755)
+	if err != nil {
+		return Fatal(err)
+	}
+	modes[dir] = 0755
+
+	file := filepath.Join(etcDir, ".default_boot_services")
+	err = os.WriteFile(file, []byte{}, 0644)
+	if err != nil {
+		return Fatal(err)
+	}
+	modes[file] = 0644
+
+	dir = filepath.Join(etcDir, "runlevels")
+	modes[dir] = 0755
+
+	dir = filepath.Join(etcDir, "runlevels", "default")
+	err = os.MkdirAll(dir, 0755)
+	if err != nil {
+		return Fatal(err)
+	}
+	modes[dir] = 0755
+
+	linkTarget := "/etc/init.d/local"
+	linkFile := filepath.Join(etcDir, "runlevels", "default", "local")
+	// add filename to symlinks for WriteTarball
+	symlinks := []string{linkFile}
+	// write link target as link file content
+	err = os.WriteFile(linkFile, []byte(linkTarget), 0755)
+	if err != nil {
+		return Fatal(err)
+	}
+	modes[linkFile] = 0755
+
+	apkDir := filepath.Join(etcDir, "apk")
+	err = os.Mkdir(apkDir, 0755)
+	if err != nil {
+		return Fatal(err)
+	}
+	modes[apkDir] = 0755
+
+	if !strings.HasPrefix(m.Config.Mirror, "http") {
+		return Fatalf("unexpected non-URL alpine mirror: %s", m.Config.Mirror)
+	}
+	repoData := fmt.Sprintf("%s/alpine/v%s.%s/main\n", m.Config.Mirror, major, minor)
+	repoData += fmt.Sprintf("%s/alpine/v%s.%s/community\n", m.Config.Mirror, major, minor)
+	file = filepath.Join(apkDir, "repositories")
+	err = os.WriteFile(file, []byte(repoData), 0644)
+	if err != nil {
+		return Fatal(err)
+	}
+	modes[file] = 0644
+
+	localDir := filepath.Join(etcDir, "local.d")
+	err = os.Mkdir(localDir, 0755)
+	if err != nil {
+		return Fatal(err)
+	}
+	modes[localDir] = 0755
+
+	autostart := filepath.Join(localDir, "auto-setup-alpine.start")
+	err = files.CopyFileFromFS(autostart, filepath.Join("mkboot", "rc.netboot.alpine"), template.Mkboot)
+	if err != nil {
+		return Fatal(err)
+	}
+	err = os.Chmod(autostart, 0755)
+	if err != nil {
+		return Fatal(err)
+	}
+	modes[autostart] = 0755
+
 	// write apk overlay /ipxe/MAC.apkovl
-	err = WriteTarball(filepath.Join(m.IpxeDir, m.Config.Address+".apkovl.tar.gz"), ovlDir, true)
+	dstTarball := filepath.Join(m.IpxeDir, m.Config.Address+".apkovl.tar.gz")
+	log.Printf("mkbootAlpine: tarball=%s\n", dstTarball)
+	err = files.WriteTarball(dstTarball, ovlDir, true, symlinks, modes)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -267,14 +328,14 @@ func (m *MkBoot) buildISO() error {
 
 	// copy netboot source ISO from IPXE template
 	srcIso := filepath.Join(m.TempDir, "netboot.iso")
-	err := CopyFileFromFS(srcIso, filepath.Join("ipxe", "netboot.xyz.iso"), m.template.Ipxe)
+	err := files.UnzipFileFromFS(srcIso, filepath.Join("ipxe", "netboot.xyz.iso.gz"), template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
 
 	// copy source EFI boot disk image for CreateEFIImage from IPXE template
 	efiBin := filepath.Join(m.TempDir, "BOOTX64.EFI")
-	err = CopyFileFromFS(efiBin, filepath.Join("ipxe", "netboot.xyz.efi"), m.template.Ipxe)
+	err = files.UnzipFileFromFS(efiBin, filepath.Join("ipxe", "netboot.xyz.efi.gz"), template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -284,7 +345,7 @@ func (m *MkBoot) buildISO() error {
 
 	// generate the EFI boot disk image with autoexec (ipxe menu)
 	efiImage := filepath.Join(m.TempDir, "efi.img")
-	err = bootimg.CreateEFIImage(efiImage, efiBin, autoexec)
+	err = CreateEFIImage(efiImage, efiBin, autoexec)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -295,5 +356,61 @@ func (m *MkBoot) buildISO() error {
 		return Fatal(err)
 	}
 
+	return nil
+}
+
+func FormatMAC(mac, separator string) (string, error) {
+	if !NORMALIZED_MAC_PATTERN.MatchString(mac) {
+		return "", Fatalf("expected normalized MAC, got: %v", mac)
+	}
+	var formatted string
+	var sep string
+	for i := 0; i < len(mac); i += 2 {
+		formatted += sep + mac[i:i+2]
+		sep = separator
+	}
+	return formatted, nil
+}
+
+func CreateEFIImage(dstImage, efiBin, autoexec string) error {
+	log.Printf("CreateEFIImage(%s, %s, %s)\n", dstImage, efiBin, autoexec)
+	img, err := image.CreateImage(dstImage, "IPXE", "iPXE", 12, 1440*1024)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer img.Close()
+	err = img.Mkdir("EFI")
+	if err != nil {
+		return Fatal(err)
+	}
+	err = img.Mkdir("EFI/BOOT")
+	if err != nil {
+		return Fatal(err)
+	}
+	_, name := filepath.Split(efiBin)
+	err = img.AddFile(filepath.Join("EFI", "BOOT", name), efiBin)
+	if err != nil {
+		return Fatal(err)
+	}
+	err = img.AddFile("autoexec.ipxe", autoexec)
+	if err != nil {
+		return Fatal(err)
+	}
+	return nil
+}
+
+func injectBootFiles(fatImage string, injectFiles []string) error {
+	image, err := image.OpenImage(fatImage)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer image.Close()
+	for _, injectFile := range injectFiles {
+		_, injectName := filepath.Split(injectFile)
+		err = image.AddFile(injectName, injectFile)
+		if err != nil {
+			return Fatal(err)
+		}
+	}
 	return nil
 }

@@ -1,12 +1,13 @@
 package bootiso
 
 import (
-	"github.com/rstms/boxen-template/template"
 	common "github.com/rstms/go-common"
+	"github.com/rstms/netboot/template"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 )
@@ -31,7 +32,7 @@ func mkTestFile(t *testing.T, name string) string {
 func templateFile(t *testing.T, name string) string {
 	testFile := filepath.Join("testdata", name)
 	if !common.IsFile(testFile) {
-		src, err := template.Ipxe.Open(filepath.Join("ipxe", name))
+		src, err := template.Ipxe.Open(path.Join("ipxe", name))
 		require.Nil(t, err)
 		defer src.Close()
 		dst, err := os.Create(testFile)
@@ -43,11 +44,11 @@ func templateFile(t *testing.T, name string) string {
 	return testFile
 }
 
-func TestISOCreate(t *testing.T) {
+func TestNetbootBootISOCreate(t *testing.T) {
 	outputImage := mkTestFile(t, "output.iso")
 	sourceImage := templateFile(t, "netboot.xyz.iso")
-	efiImage := templateFile(t, "efi.img")
-	autoexecFile := templateFile(t, "autoexec.ipxe")
+	efiImage := templateFile(t, "netboot.xyz.efi")
+	autoexecFile := templateFile(t, "openbsd-autoexec.ipxe")
 	rootFiles := []string{}
 	err := CreateNetbootISOImage(outputImage, sourceImage, efiImage, autoexecFile, rootFiles)
 	require.Nil(t, err)

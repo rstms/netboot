@@ -33,6 +33,7 @@ package cmd
 import (
 	"os"
 
+	"github.com/rstms/cobra-daemon"
 	"github.com/spf13/cobra"
 )
 
@@ -53,4 +54,5 @@ func Execute() {
 }
 func init() {
 	CobraInit(rootCmd)
+	daemon.AddDaemonCommands(rootCmd, "server")
 }

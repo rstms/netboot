@@ -1,22 +1,23 @@
 package server
 
 import (
-	"github.com/rstms/boxen-template/template"
+	"github.com/rstms/boxen/files"
+	"github.com/rstms/netboot/template"
 	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestInitrdGenerate(t *testing.T) {
+func TestNetbootServerInitrdGenerate(t *testing.T) {
 
-	srcInitrd := filepath.Join("debian", "bookworm", "amd64", "initrd.gz")
+	srcInitrd := filepath.Join("dist", "debian", "bookworm", "amd64", "initrd.gz")
 	dstInitrd := filepath.Join("testdata", "initrd.gz")
 
-	err := CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
+	err := files.CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
 	require.Nil(t, err)
 
-	initrd, err := UnzipFile(dstInitrd)
+	initrd, err := files.UnzipFile(dstInitrd)
 	require.Nil(t, err)
 
 	preseed := filepath.Join("testdata", "preseed.cfg")

@@ -1,0 +1,369 @@
+#!/bin/ksh
+
+# openbsd rc.netboot
+
+# pull in functions from autoinstall
+FUNCS_ONLY=1
+. /autoinstall
+
+console_prompt() {
+    echo "$@"
+    read response
+    if [ -n "$response" ]; then
+	trap - EXIT
+	exit 1
+    fi
+}
+
+ehandler() {
+    echo >&2 "$0: configuration failure; rebooting..."
+    if [ -n "${_debug}" ]; then
+	console_prompt "enter to continue"
+    else
+	sleep 5
+    fi
+    reboot
+}
+trap ehandler EXIT
+    
+set -e
+
+disk_device() {
+    # find first disk device excluding cdrom (cd0) and ramdisk (rd0)
+    sysctl hw.disknames | sed \
+	-e 's/^[^=]*=//' \
+	-e 's/,/ /g' \
+	-e 's/:[^[:space:]]*//g' \
+	-e 's/[cr]d[0-9]//g' \
+	-e 's/[[:space:]]//g'
+}
+
+make_disk_device_nodes() {
+    [ -n "${_debug}" ] && echo make_disk_device_nodes || true
+    local _disk
+    _disk=$(disk_device)
+    echo "Using device ${_disk}"
+    if ! { ls /dev | grep -q "^${_disk}"; } ; then
+	echo "making ${_disk} device nodes..."
+	cd /dev
+	. ./MAKEDEV ${_disk}
+	cd /
+    fi
+    if [ -n "${_debug}" ]; then
+	echo _disk=$_disk
+	ls /dev/ | grep "^${_disk}"
+	console_prompt "make_disk_device_nodes: enter to continue"
+    fi
+}
+
+
+mount_netboot_disk_image() {
+    [ -n "${_debug}" ] && echo mount_netboot_disk_image || true
+    local _disk
+    _disk=$(disk_device)
+    if mount | grep 'on /netboot_config '; then
+	echo "/netboot_config is already mounted"
+    else
+	echo "Checking for boot image on ${_disk}..."
+	if sysctl hw.disknames | grep -q "${_disk}:" ; then 
+	    make_disk_device_nodes
+	    if { disklabel ${_disk} 2>/dev/null || true; } | grep 'i:[[:space:]].*[[:space:]]MSDOS' ; then
+		echo "SYSLINUX boot image detected; mounting FAT filesystem at /netboot_config..."
+		mkdir -p /netboot_config
+		mount /dev/sd0i /netboot_config
+	    fi
+	else
+	    echo "sd0 device not detected"
+	fi
+    fi
+    if [ -n "${_debug}" ]; then
+	mount
+	console_prompt "mount_netboot_disk_image: enter to continue"
+    fi
+}
+
+unmount_netboot_config() {
+    [ -n "${_debug}" ] && echo unmount_netboot_config || true
+    if mount | grep '[[:space:]]/netboot_config[[:space:]]'; then
+	echo "Unmounting netboot_config..."
+	umount /netboot_config
+    fi
+    rm -df /netboot_config
+    if [ -n "${_debug}" ]; then
+	mount
+	console_prompt "unmount_netboot_config: enter to continue"
+    fi
+}
+
+mount_netboot_cdrom() {
+    [ -n "${_debug}" ] && echo mount_netboot_cdrom || true
+    if mount | grep 'on /netboot_config '; then
+	echo "/netboot_config already mounted"
+    else
+	echo "Checking for boot image on /dev/cd0..."
+	if sysctl hw.disknames | grep -q 'cd0:' ; then 
+	    cd /dev
+	    . ./MAKEDEV cd0
+	    cd /
+	    if { disklabel 2>/dev/null cd0 || true; } | grep 'c:[[:space:]].*[[:space:]]ISO9660' ; then
+		echo "CDROM detected; mouting ISO9660 filesystem at /netboot_config"
+		mkdir -p /netboot_config
+		mount /dev/cd0c /netboot_config
+	    fi
+	else 
+	    echo "cd0 device not detected"
+	fi
+    fi
+    if [ -n "${_debug}" ]; then
+	mount
+	console_prompt "mount_netboot_cdrom: enter to continue"
+    fi
+}
+
+install_config_file() {
+    local _src=$1
+    local _dst=$2
+    local _owner=$3
+    local _group=$4
+    local _mode=$5
+    cp /netboot_config/$_src /$_dst
+    chown ${_owner}.${_group} /$_dst
+    chmod $_mode /$_dst
+}
+
+install_netboot_config_files() {
+    [ -n "${_debug}" ] && echo install_netboot_config_files || true
+
+    # install env config from mounted directory
+    install_config_file netboot.env /netboot.env root wheel 0444
+
+    # replace installer system CA with netboot CA
+    install_config_file keymaster.pem /etc/ssl/cert.pem root wheel 0444
+
+    # install netboot CA and client certs
+    install_config_file keymaster.pem /etc/ssl/keymaster.pem root wheel 0444
+    install_config_file netboot.pem /etc/ssl/netboot.pem root wheel 0444
+    install_config_file netboot.key /etc/ssl/netboot.key root wheel 0444
+    if [ -n "${_debug}" ]; then
+	ls -l /etc/ssl
+	cat /netboot.env
+	console_prompt "install_netboot_config_files: enter to continue"
+    fi
+}
+
+
+zero_disk_label() {
+    [ -n "${_debug}" ] && echo zero_disk_label || true
+    local _disk
+    _disk=$(disk_device)
+    echo "Zeroing first 128 blocks of $_device"
+    dd if=/dev/zero of=/dev/${_disk}c count=128
+    if [ -n "${_debug}" ]; then
+	console_prompt "zero_disk_label: enter to continue"
+    fi
+}
+
+mount_usr_local() {
+    [ -n "${_debug}" ] && echo mount_usr_local || true
+    local _disk
+    echo "Creating temporary /usr/local filesystem..."
+    if mount | grep 'on /usr/local '; then 
+	echo "Detected existing mount"
+    else
+	make_disk_device_nodes
+	zero_disk_label
+	_disk=$(disk_device)
+	disklabel -Aw ${_disk}
+	newfs /dev/r${_disk}a
+	mkdir -p /usr/local
+	mount /dev/${_disk}a /usr/local
+    fi
+    if [ -n "${_debug}" ]; then
+	df -h | grep /usr/local
+	console_prompt "mount_usr_local: enter to continue"
+    fi
+}
+
+unmount_usr_local() {
+    [ -n "${_debug}" ] && echo unmount_usr_local || true
+    if [ -n "$(mount | grep 'on /usr/local ')" ]; then
+	echo "Unmounting temporary /usr/local filesystem"
+	umount /usr/local
+	zero_disk_label
+    else
+	echo "No mount dectected at /usr/local"
+    fi
+    rm -df /usr/local
+    if [ -n "${_debug}" ]; then
+	mount
+	console_prompt "unmount_usr_local: enter to continue"
+    fi
+}
+
+
+install_gdl() {
+    [ -n "${_debug}" ] && echo install_gdl || true
+    local _target
+    _target=$1
+    if [ -e ${_target}/bin/gdl ]; then
+	echo "Detected existing gdl:"
+    else
+	echo "Installing gdl.tgz to ${_target}/bin..."
+	cd ${_target}
+	if [ -e /netboot_config/gdl.tgz ]; then
+	    tar zxf /netboot_config/gdl.tgz
+	else
+	    ftp -o - ${_gdl_url} | tar zxf -
+	fi	
+	chmod 0755 bin/*
+	bin/install_gdl
+	cd /
+    fi
+    if [ -n "${_debug}" ]; then
+	ls -l ${_target}/bin/gdl
+	console_prompt "install_gdl: enter to continue"
+    fi
+}
+
+configure_netboot() {
+    [ -n "${_debug}" ] && echo configure_netboot || true
+    local _nbif _mac _disk _iter _url _debug _file_url
+
+    make_disk_device_nodes
+    mount_netboot_disk_image
+    mount_netboot_cdrom
+    install_netboot_config_files
+    unmount_netboot_config
+
+    . /netboot.env
+
+    _nbif=$(get_ifs)
+    if [ -n "$_nbif" ]; then
+        echo "netboot interface: $_nbif"
+        ifconfig $_nbif group netboot
+    else
+        echo "interface not detected"
+        exit 1
+    fi
+  
+    if [[ -x /sbin/dhcpleased ]]; then
+        echo dhcpleased is present and executable
+    else
+        echo dhcpleased is not executable!
+        exit 1
+    fi
+
+    ifconfig $_nbif inet autoconf up
+  
+    if ! wait_for_dhcp_info $_nbif 30; then
+        echo "DHCP config timeout on interface $_nbif"
+        exit 1
+    fi
+
+    echo "Setting clock from ${_url}/utc..."
+    _iter=0
+    while [ $_iter -lt 10 ]; do
+	_iter=$(( $_iter + 1 ))
+	if ftp -S noverifytime ${_url}/utc; then
+	    break
+	else
+	    echo retrying...
+	    sleep 1
+	fi
+    done
+    date -f '%s' $(cat utc)
+
+    mount_usr_local
+
+    install_gdl /usr/local
+
+    _file_url=${_url}/ipxe/${_mac}.response
+    echo "Downloading ${_file_url}"
+    /usr/local/bin/gdl \
+	-ca /etc/ssl/keymaster.pem \
+	-cert /etc/ssl/netboot.pem \
+	-key /etc/ssl/netboot.key \
+	${_file_url}
+    mv ${_mac}.response auto_install.conf
+    ls -l /auto_install.conf
+
+    if grep -q 'file:///disklabel_template' auto_install.conf; then 
+	_file_url=${_url}/ipxe/${_mac}.disk
+	echo "Downloading ${_file_url}"
+	/usr/local/bin/gdl \
+	    -ca /etc/ssl/keymaster.pem \
+	    -cert /etc/ssl/netboot.pem \
+	    -key /etc/ssl/netboot.key \
+	    ${_url}/ipxe/${_mac}.disk
+	mv ${_mac}.disk /disklabel_template
+	ls -l /disklabel_template
+    fi
+
+    unmount_usr_local
+
+    ifconfig $_nbif inet -autoconf delete down 2>/dev/null || true
+    rm -f /var/db/dhcpleased/$_nbif || true
+
+    if [ -n "${_debug}" ]; then
+	console_prompt "configure_netboot: hit enter to continue"
+    fi
+}
+
+install_site_package() {
+    [ -n "${_debug}" ] && echo install_site_package || true
+
+    local _mac _url _debug _gdl _file_url
+
+    . /netboot.env
+
+    _gdl='/usr/local/bin/gdl -ca /etc/ssl/keymaster.pem -cert /etc/ssl/netboot.pem -key /etc/ssl/netboot.key'
+    if [ -x /mnt/usr/local/bin/gdl ]; then
+	echo "Using existing gdl:"
+	ls -l /mnt/usr/local/bin/gdl
+    else 
+	set -x
+	echo "Installing gdl to /mnt/usr/local/bin"
+	mkdir /mnt/root/gdl
+	install_gdl /mnt/root/gdl
+	ls -al /mnt/root/gdl
+	ls -al /mnt/root/gdl/bin
+	mv /mnt/root/gdl/bin/gdl /mnt/usr/local/bin/gdl
+	rm -rf /mnt/root/gdl
+	chmod 0755 /mnt/usr/local/bin/gdl
+	set +x
+    fi
+    cd /
+    cp /etc/ssl/keymaster.pem /mnt/etc/ssl
+    cp /etc/ssl/netboot.pem /mnt/etc/ssl
+    cp /etc/ssl/netboot.key /mnt/etc/ssl
+    chmod 0444 /mnt/etc/ssl/*.pem
+    chmod 0400 /mnt/etc/ssl/netboot.key
+
+    mkdir /mnt/root/.netboot
+    chmod 0700 /mnt/root/.netboot
+
+    _file_url="${_url}/ipxe/${_mac}.tgz"
+    echo "Downloading site package ${_file_url}..."
+    chroot /mnt sh -c "${_gdl} ${_file_url} - | tar zxvphf - >/root/.netboot/package.stdout 2>/root/.netboot/package.stderr"
+
+    # fix tarball directory premissions
+    chmod 0755 /mnt
+    chmod 0755 /mnt/etc
+    chmod 0755 /mnt/etc/ssl
+
+    echo "Executing /postinstall..."
+    chroot /mnt sh -c '/postinstall'
+
+    echo "configuration complete"
+    if [ -n "${_debug}" ]; then
+	console_prompt "install_site_package: hit enter to continue"
+    fi
+}
+
+case $1 in 
+    pre_install) configure_netboot;;
+    post_install) install_site_package;;
+    *) echo >&2 "$0: Unexpected argument: '$1'"; exit 1;;
+esac
+
+trap - EXIT
