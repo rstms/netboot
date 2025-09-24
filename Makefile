@@ -7,6 +7,7 @@ go_version = go1.24.5
 latest_release != gh release list --json tagName --jq '.[0].tagName' | tr -d v
 rstms_modules != awk <go.mod '/^module/{next} /rstms/{print $$1}'
 gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(info git status is clean))
+release_binary = $(program)-v$(version)-$(os)-$(os_version)-$(arch)
 
 
 # common targets
@@ -39,6 +40,9 @@ release:
 	$(gitclean)
 	@$(if $(update),gh release delete -y v$(version),)
 	gh release create v$(version) --notes "v$(version)"
+
+release-upload:
+	cp $(program) $(release_binary) && gh release upload v$(latest_release) $(release_binary) --clobber && rm $(release_binary)
 
 latest_module_release = $(shell gh --repo $(1) release list --json tagName --jq '.[0].tagName')
 
