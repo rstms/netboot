@@ -3,9 +3,9 @@ package server
 import (
 	"fmt"
 	"github.com/rstms/boxen/files"
-	"github.com/rstms/boxen/message"
 	"github.com/rstms/ffs/image"
 	"github.com/rstms/netboot/bootiso"
+	"github.com/rstms/netboot/message"
 	"github.com/rstms/netboot/template"
 	"io/fs"
 	"log"

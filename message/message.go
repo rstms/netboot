@@ -1,0 +1,15 @@
+package message
+
+type NetbootConfig struct {
+	Address           string `json:"address"`
+	OS                string `json:"os"`
+	Version           string `json:"version"`
+	Arch              string `json:"arch"`
+	Serial            string `json:"serial"`
+	Mirror            string `json:"mirror"`
+	Response          string `json:"response"`
+	DisklabelTemplate string `json:"disklabel_template"`
+	KernelParams      string `json:"kernel_params"`
+	Debug             bool   `json:"debug"`
+	Quiet             bool   `json:"quiet"`
+}
