@@ -64,8 +64,8 @@ clean:
 	go clean
 	rm -rf /tmp/netboot*
 	rm -rf ~/.cache/netboot/ipxe
-	mkdir ~/.cache/netboot/ipxe
-	rm -rf cmd/certs/debian
+	mkdir -p ~/.cache/netboot/ipxe
+	chown -R $(USER):$(USER) ~/.cache
 
 sterile: clean
 	which $(program) && go clean -i || true
