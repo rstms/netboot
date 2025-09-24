@@ -7,7 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/rstms/boxen/files"
+	"github.com/rstms/netboot/files"
 	"github.com/rstms/netboot/message"
 	"github.com/rstms/netboot/template"
 	"io"
