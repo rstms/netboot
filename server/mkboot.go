@@ -475,10 +475,14 @@ func dumpFAT(dstImage string) error {
 func (m *MkBoot) writeDebianNetbootTarball() error {
 	modes := make(map[string]fs.FileMode)
 	netbootDir := filepath.Join(m.TempDir, "netboot")
+	err := os.Mkdir(netbootDir, 0700)
+	if err != nil {
+		return Fatal(err)
+	}
 	for _, srcPathname := range m.BootFiles {
 		_, dstName := filepath.Split(srcPathname)
 		dstPathname := filepath.Join(netbootDir, dstName)
-		err := files.CopyFile(dstPathname, srcPathname)
+		err = files.CopyFile(dstPathname, srcPathname)
 		if err != nil {
 			return Fatal(err)
 		}
@@ -486,7 +490,7 @@ func (m *MkBoot) writeDebianNetbootTarball() error {
 	}
 	netBall := filepath.Join(m.IpxeDir, m.Config.Address+".netboot")
 	log.Printf("mkbootDebian: netbootTarball=%s\n", netBall)
-	err := files.WriteTarball(netBall, netbootDir, true, []string{}, modes)
+	err = files.WriteTarball(netBall, netbootDir, true, []string{}, modes)
 	if err != nil {
 		return Fatal(err)
 	}
