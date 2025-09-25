@@ -7,7 +7,7 @@ echo >>/dev/console "Executing /rc.netboot ($0)"
 
 # mount cdrom
 mkdir /cdrom
-mount -t iso9660 -o ro /dev/cdrom /cdrom 
+mount -t iso9660 -o ro /dev/cdrom /cdrom  || mount -t msdos -o ro /dev/sda /cdrom
 
 . /cdrom/netboot.env
 
