@@ -12,7 +12,17 @@ _url=$1
 mkdir /tmp/certs
 cp /etc/ssl/certs/keymaster*.crt /tmp/certs
 mkdir /tmp/cdrom
-mount -t iso9660 -o ro /dev/cdrom /tmp/cdrom 
+if mount -t iso9660 -o ro /dev/cdrom /tmp/cdrom; then
+    mount | grep /tmp/cdrom
+else
+    mkdir /tmp/syslinux
+    mount -t vfat -o ro /dev/sda /tmp/syslinux
+    cp /tmp/syslinux/*.env /tmp/cdrom
+    cp /tmp/syslinux/*.pem /tmp/cdrom
+    cp /tmp/syslinux/*.key /tmp/cdrom
+    cp /tmp/syslinux/netboot_exec /tmp/cdrom
+    umount /tmp/syslinux
+fi
 
 # create netboot output dir
 mkdir -p /target/root/.netboot
@@ -34,5 +44,7 @@ chmod 0755 /target
 chmod 0755 /target/etc
 chmod 0755 /target/etc/ssl
 
-umount /dev/cdrom 
+if mount | grep /tmp/cdrom; then 
+    umount /dev/cdrom 
+fi
 rm -rf /tmp/certs
