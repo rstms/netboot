@@ -3,48 +3,81 @@
 # debian rc.netboot
 # staged for download as MAC.postinstall
 # loaded by debian autoexec.ipxe to install ramdisk /rc.netboot
-# executed by d-i preseed/late_command string in preseed.cfg (boxen response file)
+#
+# called 3 times during installer: 
+#   d-i preseed/early_command
+#   d-i partman/early_command
+#   d-i preseed/late_command
 
 # preseed.cfg passes netboot URL (configured by boxen) as argument
-_url=$1
 
-# mount certs dir from cdrom
-mkdir /tmp/certs
-cp /etc/ssl/certs/keymaster*.crt /tmp/certs
-mkdir /tmp/cdrom
-if mount -t iso9660 -o ro /dev/cdrom /tmp/cdrom; then
-    mount | grep /tmp/cdrom
-else
-    mkdir /tmp/syslinux
-    mount -t vfat -o ro /dev/sda /tmp/syslinux
-    cp /tmp/syslinux/*.env /tmp/cdrom
-    cp /tmp/syslinux/*.pem /tmp/cdrom
-    cp /tmp/syslinux/*.key /tmp/cdrom
-    cp /tmp/syslinux/netboot_exec /tmp/cdrom
-    umount /tmp/syslinux
-fi
+preseed_early_command() {
 
-# create netboot output dir
-mkdir -p /target/root/.netboot
-chmod 0700 /target/root/.netboot
+    mkdir /tmp/netboot
 
-# preserve preseed.cfg
-cp /preseed.cfg /target/root/.netboot
+    echo "preseed_early_command" | tee /dev/console >>/tmp/netboot/preseed_early.log
 
-_mac=$(ip address | awk '/link\/ether/{print $2}' | tr -d ':')
-_log=/target/root/.netboot/package
-_wget="wget --ca-directory /tmp/certs --certificate=/tmp/cdrom/netboot.pem --private-key=/tmp/cdrom/netboot.key"
-_tarball=${_url}/ipxe/${_mac}.tgz
+    tar zxf /cacerts.tgz
+    mkdir /tmp/certs
+    cp /etc/ssl/certs/keymaster*.crt /tmp/certs
 
-$_wget $_tarball -O - | tar zxv -C /target >${_log}.stdout 2>${_log}.stderr
-echo $? >${_log}.exitcode
+    mkdir /tmp/netboot_device
+    mount -t iso9660 -o ro /dev/cdrom /tmp/netboot_device || mount -t vfat -o ro /dev/sda /tmp/netboot_device
 
-# fix tarball directory permissions 
-chmod 0755 /target
-chmod 0755 /target/etc
-chmod 0755 /target/etc/ssl
+    mount | tee /dev/console >>/tmp/netboot/preseed_early.log
 
-if mount | grep /tmp/cdrom; then 
-    umount /dev/cdrom 
-fi
-rm -rf /tmp/certs
+    cp /tmp/netboot_device/*.env /tmp/netboot
+    cp /tmp/netboot_device/*.pem /tmp/netboot
+    cp /tmp/netboot_device/*.key /tmp/netboot
+    cp /tmp/netboot_device/netboot_exec /tmp/netboot
+
+    umount /tmp/netboot_device
+    rmdir /tmp/netboot_device
+
+    ls -al /tmp/netboot_device | tee /dev/console >>/tmp/netboot/preseed_early.log
+    cat /tmp/netboot/netboot.env | tee /dev/console >>/tmp/netboot/preseed_early.log
+}
+    
+partman_early_command() {
+    echo "partman_early_command: setting hostname $1" | tee /dev/console >>/tmp/netboot/partman_early.log
+    hostname $1
+}
+
+preseed_late_command() {
+
+    echo "preseed_late_command" | tee /dev/console >>/tmp/netboot/preseed_late.log
+
+    . /tmp/netboot/netboot.env
+
+    # create netboot output dir
+    mkdir -p /target/root/.netboot
+    chmod 0700 /target/root/.netboot
+    
+    # preserve config files in netboot output dir
+    cp /preseed.cfg /target/root/.netboot
+    cp -rp /tmp/netboot /target/root/.netboot/tmp_netboot
+    
+    _mac=$(ip address | awk '/link\/ether/{print $2}' | tr -d ':')
+    _log=/target/root/.netboot/package
+    _wget="wget --ca-directory /tmp/certs --certificate=/tmp/netboot/netboot.pem --private-key=/tmp/netboot/netboot.key"
+    _tarball=${_url}/ipxe/${_mac}.tgz
+    
+    $_wget $_tarball -O - | tar zxv -C /target >${_log}.stdout 2>${_log}.stderr
+    echo $? >${_log}.exitcode
+    
+    # fix tarball directory permissions 
+    chmod 0755 /target
+    chmod 0755 /target/etc
+    chmod 0755 /target/etc/ssl
+    
+    rm -rf /tmp/certs
+    rm -rf /tmp/netboot
+}
+
+
+case $1 in 
+    preseed_early) shift; preseed_early_command "$@" ;;
+    partman_early) shift; partman_early_command "$@" ;;
+    preseed_late) shift; preseed_late_command "$@" ;;
+done
+    
