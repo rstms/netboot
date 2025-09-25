@@ -130,14 +130,6 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
-	// alpine ipxe netboot image: /ipxe/MAC.img
-	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
-	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
-	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
-	if err != nil {
-		return Fatal(err)
-	}
-
 	// copy cacerts.tgz from package tarball: /ipxe/MAC.cacerts
 	// will be patched into the initrd by rstms-netboot-debian.ipxe as /cacerts.tgz
 	tarballPathname := filepath.Join(m.IpxeDir, fmt.Sprintf("%s.tgz", m.Config.Address))
@@ -170,6 +162,14 @@ func (m *MkBoot) mkbootDebian() error {
 	dstInitrd := filepath.Join(m.IpxeDir, m.Config.Address+".initrd")
 	log.Printf("mkbootDebian: initrd=%s\n", dstInitrd)
 	err = files.CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	// alpine ipxe netboot image: /ipxe/MAC.img
+	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
+	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
+	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -243,9 +243,6 @@ func (m *MkBoot) mkbootAlpine() error {
 	if err != nil {
 		return Fatal(err)
 	}
-
-	// add netboot.env to netboot iso bootfiles
-	m.BootFiles = append(m.BootFiles, filepath.Join(m.TempDir, "netboot.env"))
 
 	// generate overlay tarball
 	modes := make(map[string]fs.FileMode)
