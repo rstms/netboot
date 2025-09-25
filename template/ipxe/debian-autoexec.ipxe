@@ -36,6 +36,7 @@ kernel ${bootfile}.kernel ${netcfg} ${install_params} ${serial_params} ${kernel_
 initrd ${bootfile}.initrd
 initrd ${bootfile}.response /preseed.cfg
 initrd ${bootfile}.cacerts /cacerts.tgz
+initrd ${bootfile}.netboot /netboot.tgz
 initrd ${bootfile}.postinstall /rc.netboot mode=0700
 boot
 

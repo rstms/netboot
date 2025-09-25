@@ -131,7 +131,7 @@ func (m *MkBoot) mkbootDebian() error {
 	}
 
 	// copy cacerts.tgz from package tarball: /ipxe/MAC.cacerts
-	// will be patched into the initrd by rstms-netboot-debian.ipxe as /cacerts.tgz
+	// patched into the initrd by rstms-netboot-debian.ipxe (autoexec.ipxe) as /cacerts.tgz
 	tarballPathname := filepath.Join(m.IpxeDir, fmt.Sprintf("%s.tgz", m.Config.Address))
 	cacerts := filepath.Join(m.IpxeDir, m.Config.Address+".cacerts")
 	err = files.ExtractTarballFile(cacerts, "root/cacerts.tgz", tarballPathname)
@@ -139,7 +139,15 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
-	// stage netboot.rc from template as /ipxe/MAC.postinstall
+	// generate netboot tarball: /ipxe/MAC.netboot
+	// contains all BootFiles, extracts to /netboot
+	// patched into the initrd by rstms-netboot-debian.ipxe (autoexec.ipxe) as /netboot.tgz
+	err = m.writeDebianNetbootTarball()
+	if err != nil {
+		return Fatal(err)
+	}
+
+	// stage template/mkboot/rc.netboot.debian: /ipxe/MAC.postinstall
 	// NOTE: this IS NOT /postinstall from package.tgz (see mkbootAlpine)
 	postinstall := filepath.Join(m.IpxeDir, m.Config.Address+".postinstall")
 	log.Printf("mkbootDebian: postinstall=%s\n", postinstall)
@@ -166,7 +174,7 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
-	// alpine ipxe netboot image: /ipxe/MAC.img
+	// debian ipxe netboot image (for hetzner rescue): /ipxe/MAC.img
 	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
 	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
 	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
@@ -174,7 +182,9 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
-	err = injectBootFiles(dstImage, m.BootFiles)
+	// inject autoexec.ipxe into boot image
+	autoexec := filepath.Join(m.TempDir, "autoexec.ipxe")
+	err = injectBootFiles(dstImage, []string{autoexec})
 	if err != nil {
 		return Fatal(err)
 	}
@@ -458,6 +468,27 @@ func dumpFAT(dstImage string) error {
 	}
 	for i, file := range files {
 		log.Printf("[%d] %+v\n", i, file)
+	}
+	return nil
+}
+
+func (m *MkBoot) writeDebianNetbootTarball() error {
+	modes := make(map[string]fs.FileMode)
+	netbootDir := filepath.Join(m.TempDir, "netboot")
+	for _, srcPathname := range m.BootFiles {
+		_, dstName := filepath.Split(srcPathname)
+		dstPathname := filepath.Join(netbootDir, dstName)
+		err := files.CopyFile(dstPathname, srcPathname)
+		if err != nil {
+			return Fatal(err)
+		}
+		modes[dstPathname] = 0600
+	}
+	netBall := filepath.Join(m.IpxeDir, m.Config.Address+".netboot")
+	log.Printf("mkbootDebian: netbootTarball=%s\n", netBall)
+	err := files.WriteTarball(netBall, netbootDir, true, []string{}, modes)
+	if err != nil {
+		return Fatal(err)
 	}
 	return nil
 }

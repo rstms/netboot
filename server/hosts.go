@@ -401,7 +401,7 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch ext {
-	case "iso", "img", "sh", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "postinstall":
+	case "iso", "img", "sh", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "postinstall", "netboot":
 		http.ServeFile(w, r, filepath.Join(c.cacheDir, "ipxe", mac+"."+ext))
 		return
 	}
@@ -658,7 +658,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// copy autoexec.ipxe to temp dir for embedding in ISO
+	// copy autoexec.ipxe to temp dir for embedding in ISO and IMG
 	err = files.CopyFile(filepath.Join(tempDir, "autoexec.ipxe"), autoexec)
 	if err != nil {
 		Warning("%v", Fatal(err))

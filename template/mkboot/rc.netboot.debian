@@ -13,41 +13,38 @@
 
 preseed_early_command() {
 
-    mkdir /tmp/netboot
-
-    echo "preseed_early_command" | tee /dev/console >>/tmp/netboot/preseed_early.log
+    tar zxf /netboot.tgz
+    echo "preseed_early_command" >>/netboot/preseed_early.log
 
     tar zxf /cacerts.tgz
-    mkdir /tmp/certs
-    cp /etc/ssl/certs/keymaster*.crt /tmp/certs
 
-    mkdir /tmp/netboot_device
-    mount -t iso9660 -o ro /dev/cdrom /tmp/netboot_device || mount -t vfat -o ro /dev/sda /tmp/netboot_device
-
-    mount | tee /dev/console >>/tmp/netboot/preseed_early.log
-
-    cp /tmp/netboot_device/*.env /tmp/netboot
-    cp /tmp/netboot_device/*.pem /tmp/netboot
-    cp /tmp/netboot_device/*.key /tmp/netboot
-    cp /tmp/netboot_device/netboot_exec /tmp/netboot
-
-    umount /tmp/netboot_device
-    rmdir /tmp/netboot_device
-
-    ls -al /tmp/netboot_device | tee /dev/console >>/tmp/netboot/preseed_early.log
-    cat /tmp/netboot/netboot.env | tee /dev/console >>/tmp/netboot/preseed_early.log
+#    mkdir /netboot.device
+#    mount -t iso9660 -o ro /dev/cdrom /netboot.device || mount -t vfat -o ro /dev/sda /netboot.device
+#
+#    mount >>/netboot/preseed_early.log
+#
+#    cp /netboot.device/*.env /netboot
+#    cp /netboot.device/*.pem /netboot
+#    cp /netboot.device/*.key /netboot
+#    cp /netboot.device/netboot_exec /netboot
+#
+#    umount /netboot.device
+#    rmdir /netboot.device
+#
+#    ls -al /netboot.device >>/netboot/preseed_early.log
+#    cat /netboot/netboot.env >>/netboot/preseed_early.log
 }
     
 partman_early_command() {
-    echo "partman_early_command: setting hostname $1" | tee /dev/console >>/tmp/netboot/partman_early.log
+    echo "partman_early_command: setting hostname $1" >>/netboot/partman_early.log
     hostname $1
 }
 
 preseed_late_command() {
 
-    echo "preseed_late_command" | tee /dev/console >>/tmp/netboot/preseed_late.log
+    echo "preseed_late_command" >>/netboot/preseed_late.log
 
-    . /tmp/netboot/netboot.env
+    . /netboot/netboot.env
 
     # create netboot output dir
     mkdir -p /target/root/.netboot
@@ -55,11 +52,11 @@ preseed_late_command() {
     
     # preserve config files in netboot output dir
     cp /preseed.cfg /target/root/.netboot
-    cp -rp /tmp/netboot /target/root/.netboot/tmp_netboot
+    cp -rp /netboot /target/root/.netboot/tmp_netboot
     
     _mac=$(ip address | awk '/link\/ether/{print $2}' | tr -d ':')
     _log=/target/root/.netboot/package
-    _wget="wget --ca-directory /tmp/certs --certificate=/tmp/netboot/netboot.pem --private-key=/tmp/netboot/netboot.key"
+    _wget="wget --ca-certificate /netboot/keymaster.pem --certificate=/netboot/netboot.pem --private-key=/netboot/netboot.key"
     _tarball=${_url}/ipxe/${_mac}.tgz
     
     $_wget $_tarball -O - | tar zxv -C /target >${_log}.stdout 2>${_log}.stderr
@@ -70,14 +67,11 @@ preseed_late_command() {
     chmod 0755 /target/etc
     chmod 0755 /target/etc/ssl
     
-    rm -rf /tmp/certs
-    rm -rf /tmp/netboot
+    rm -rf /netboot
 }
-
 
 case $1 in 
     preseed_early) shift; preseed_early_command "$@" ;;
     partman_early) shift; partman_early_command "$@" ;;
     preseed_late) shift; preseed_late_command "$@" ;;
 done
-    
