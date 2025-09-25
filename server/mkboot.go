@@ -18,12 +18,12 @@ type MkBoot struct {
 	TempDir   string
 	IpxeDir   string
 	URL       string
-	BootFiles []string
+	BootFiles *[]string
 	Config    *message.NetbootConfig
 	ISO       string
 }
 
-func NewMkBoot(tempDir, ipxeDir, url string, bootFiles []string, config *message.NetbootConfig) *MkBoot {
+func NewMkBoot(tempDir, ipxeDir, url string, bootFiles *[]string, config *message.NetbootConfig) *MkBoot {
 	m := MkBoot{
 		TempDir:   tempDir,
 		IpxeDir:   ipxeDir,
@@ -103,7 +103,7 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	if err != nil {
 		return Fatal(err)
 	}
-	m.BootFiles = append(m.BootFiles, dstGdl)
+	*m.BootFiles = append(*m.BootFiles, dstGdl)
 
 	err = m.buildIMG()
 	if err != nil {
@@ -351,7 +351,7 @@ func (m *MkBoot) buildIMG() error {
 		return Fatal(err)
 	}
 
-	err = injectBootFiles(dstImage, m.BootFiles)
+	err = m.injectBootFiles(dstImage)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -389,7 +389,7 @@ func (m *MkBoot) buildISO() error {
 	}
 
 	// generate the netboot ISO
-	err = bootiso.CreateNetbootISOImage(m.ISO, srcIso, efiImage, m.BootFiles)
+	err = bootiso.CreateNetbootISOImage(m.ISO, srcIso, efiImage, *m.BootFiles)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -437,14 +437,14 @@ func CreateEFIImage(dstImage, efiBin, autoexec string) error {
 	return nil
 }
 
-func injectBootFiles(fatImage string, injectFiles []string) error {
+func (m *MkBoot) injectBootFiles(fatImage string) error {
 	log.Printf("injectBootFiles: %s\n", fatImage)
 	image, err := image.OpenImage(fatImage)
 	if err != nil {
 		return Fatal(err)
 	}
 	defer image.Close()
-	for i, injectFile := range injectFiles {
+	for i, injectFile := range *m.BootFiles {
 		log.Printf("[%d] %s\n", i, injectFile)
 		_, injectName := filepath.Split(injectFile)
 		err = image.AddFile(injectName, injectFile)
@@ -479,7 +479,7 @@ func (m *MkBoot) writeDebianNetbootTarball() error {
 	if err != nil {
 		return Fatal(err)
 	}
-	for _, srcPathname := range m.BootFiles {
+	for _, srcPathname := range *m.BootFiles {
 		_, dstName := filepath.Split(srcPathname)
 		dstPathname := filepath.Join(netbootDir, dstName)
 		err = files.CopyFile(dstPathname, srcPathname)

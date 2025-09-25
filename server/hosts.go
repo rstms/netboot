@@ -552,18 +552,6 @@ func (c *HostCache) UploadPackageHandlerTLS(w http.ResponseWriter, r *http.Reque
 	c.respond(w, "UploadResponse", Response{Message: fmt.Sprintf("%v bytes written", fileBytes)})
 }
 
-// copy file to temp dir, add to bootfiles, emit log message
-func addBootFile(tempDir, filename, srcPathname string, bootFiles []string) error {
-	dstPathname := filepath.Join(tempDir, filename)
-	err := files.CopyFile(dstPathname, srcPathname)
-	if err != nil {
-		return err
-	}
-	bootFiles = append(bootFiles, dstPathname)
-	log.Printf("adding boot file %s -> %s\n", srcPathname, dstPathname)
-	return nil
-}
-
 func (c *HostCache) mkURLs(r *http.Request) (string, string) {
 	log.Printf("mkURLs: r.Host=%s r.URL.Hostname=%s r.URL.Port=%s r.URL=%s\n", r.Host, r.URL.Hostname(), r.URL.Port(), r.URL)
 	log.Printf("mkURLs: c.httpURL=%s c.httpsURL=%s\n", c.httpURL, c.httpsURL)
@@ -647,8 +635,6 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	///defer os.RemoveAll(tempDir)
 	log.Printf("NOT REMOVING netboot tempDir: %s\n", tempDir)
 
-	bootFiles := []string{}
-
 	// IPXE menu: ipxe/MAC.ipxe
 	autoexec := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.ipxe", config.Address))
 	err = c.expandIpxeFile(autoexec, config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config)
@@ -657,10 +643,6 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		c.fail(w, "failed generating ipxe menu", http.StatusInternalServerError)
 		return
 	}
-
-	// add autoexec.ipxe to bootFiles
-	log.Printf("addHostHandler: autoexec=%s\n", autoexec)
-	addBootFile(tempDir, "autoexec.ipxe", autoexec, bootFiles)
 
 	// installer response file: /ipxe/MAC.response
 	responsePathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.response", config.Address))
@@ -702,12 +684,8 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// tarball: /ipxe/MAC.tgz
-	//tarballPathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.tgz", config.Address))
-	//addBootFile(tempDir, "package.tgz", tarballPathname, bootFiles)
-
 	// netboot: /ipxe/MAC.iso
-	isoFile, err := c.GenerateISO(tempDir, netbootURL, netbootHttpURL, bootFiles, &config)
+	isoFile, bootFiles, err := c.GenerateISO(tempDir, netbootURL, netbootHttpURL, &config)
 	if err != nil {
 		Warning("%v", Fatal(err))
 		c.fail(w, "failed generating boot ISO", http.StatusInternalServerError)
@@ -875,17 +853,27 @@ func (c *HostCache) ListHostsHandlerTLS(w http.ResponseWriter, r *http.Request) 
 }
 
 // Generate a url-customized netboot ISO returning generated iso pathname
-func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, bootFiles []string, config *message.NetbootConfig) (string, error) {
+func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.NetbootConfig) (string, []string, error) {
 
 	log.Printf("Generating netboot ISO for %s with URL %s\n", config.Address, url)
 
+	bootFiles := []string{}
+
 	tarball := filepath.Join(c.ipxeDir, config.Address+".tgz")
+
+	// add autoexec.ipxe to bootFiles
+	autoexec := filepath.Join(tempDir, "autoexec.ipxe")
+	err := files.CopyFile(autoexec, filepath.Join(c.ipxeDir, config.Address+".ipxe"))
+	if err != nil {
+		return "", []string{}, Fatal(err)
+	}
+	bootFiles = append(bootFiles, autoexec)
 
 	// add root CA from tarball to bootFiles
 	clientCA := filepath.Join(tempDir, "keymaster.pem")
-	err := files.ExtractTarballFile(clientCA, "etc/ssl/keymaster.pem", tarball)
+	err = files.ExtractTarballFile(clientCA, "etc/ssl/keymaster.pem", tarball)
 	if err != nil {
-		return "", Fatal(err)
+		return "", []string{}, Fatal(err)
 	}
 	bootFiles = append(bootFiles, clientCA)
 
@@ -893,7 +881,7 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, bootFiles []string
 	clientCert := filepath.Join(tempDir, "netboot.pem")
 	err = files.ExtractTarballFile(clientCert, "etc/ssl/netboot.pem", tarball)
 	if err != nil {
-		return "", Fatal(err)
+		return "", []string{}, Fatal(err)
 	}
 	bootFiles = append(bootFiles, clientCert)
 
@@ -901,7 +889,7 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, bootFiles []string
 	clientKey := filepath.Join(tempDir, "netboot.key")
 	err = files.ExtractTarballFile(clientKey, "etc/ssl/netboot.key", tarball)
 	if err != nil {
-		return "", Fatal(err)
+		return "", []string{}, Fatal(err)
 	}
 	bootFiles = append(bootFiles, clientKey)
 
@@ -909,7 +897,7 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, bootFiles []string
 	netbootExec := filepath.Join(tempDir, "netboot_exec")
 	err = files.ExtractTarballFile(netbootExec, "root/netboot_exec", tarball)
 	if err != nil {
-		return "", Fatal(err)
+		return "", []string{}, Fatal(err)
 	}
 	bootFiles = append(bootFiles, netbootExec)
 
@@ -932,7 +920,7 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, bootFiles []string
 	netbootEnv += fmt.Sprintf("_gdl_url='%s/gdl/%s/%s/gdl.tgz'\n", url, config.Version, config.Arch)
 	err = os.WriteFile(netbootEnvFile, []byte(netbootEnv), 0644)
 	if err != nil {
-		return "", Fatal(err)
+		return "", []string{}, Fatal(err)
 	}
 	bootFiles = append(bootFiles, netbootEnvFile)
 
@@ -941,16 +929,16 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, bootFiles []string
 	postinstall := filepath.Join(tempDir, "postinstall")
 	err = files.ExtractTarballFile(postinstall, "postinstall", tarball)
 	if err != nil {
-		return "", Fatal(err)
+		return "", []string{}, Fatal(err)
 	}
 
-	mkboot := NewMkBoot(tempDir, c.ipxeDir, url, bootFiles, config)
+	mkboot := NewMkBoot(tempDir, c.ipxeDir, url, &bootFiles, config)
 	isoFile, err := mkboot.Generate()
 	if err != nil {
-		return "", Fatal(err)
+		return "", []string{}, Fatal(err)
 	}
 	log.Printf("Generated %s\n", isoFile)
-	return isoFile, nil
+	return isoFile, bootFiles, nil
 
 }
 
