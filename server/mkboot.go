@@ -94,14 +94,6 @@ func (m *MkBoot) mkbootOpenBSD() error {
 		return Fatal(err)
 	}
 
-	// openbsd ipxe netboot image: /ipxe/MAC.img
-	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
-	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
-	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
-	if err != nil {
-		return Fatal(err)
-	}
-
 	// add gdl??.tgz to netboot iso bootfiles
 	tag := strings.ReplaceAll(m.Config.Version, ".", "")
 	srcGdl := filepath.Join("dist", "openbsd", m.Config.Version, m.Config.Arch, "gdl"+tag+".tgz")
@@ -112,6 +104,14 @@ func (m *MkBoot) mkbootOpenBSD() error {
 		return Fatal(err)
 	}
 	m.BootFiles = append(m.BootFiles, dstGdl)
+
+	// openbsd ipxe netboot image: /ipxe/MAC.img
+	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
+	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
+	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
+	if err != nil {
+		return Fatal(err)
+	}
 
 	err = injectBootFiles(dstImage, m.BootFiles)
 	if err != nil {
@@ -338,6 +338,11 @@ func (m *MkBoot) mkbootAlpine() error {
 		return Fatal(err)
 	}
 
+	err = dumpFAT(dstImage)
+	if err != nil {
+		return Fatal(err)
+	}
+
 	err = injectBootFiles(dstImage, m.BootFiles)
 	if err != nil {
 		return Fatal(err)
@@ -426,17 +431,36 @@ func CreateEFIImage(dstImage, efiBin, autoexec string) error {
 }
 
 func injectBootFiles(fatImage string, injectFiles []string) error {
+	log.Printf("injectBootFiles: %s\n", fatImage)
 	image, err := image.OpenImage(fatImage)
 	if err != nil {
 		return Fatal(err)
 	}
 	defer image.Close()
-	for _, injectFile := range injectFiles {
+	for i, injectFile := range injectFiles {
+		log.Printf("[%d] %s\n", i, injectFile)
 		_, injectName := filepath.Split(injectFile)
 		err = image.AddFile(injectName, injectFile)
 		if err != nil {
 			return Fatal(err)
 		}
+	}
+	return nil
+}
+
+func dumpFAT(dstImage string) error {
+	log.Printf("FAT files: %s\n", dstImage)
+	image, err := image.OpenImage(dstImage)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer image.Close()
+	files, err := image.ScanFiles()
+	if err != nil {
+		return Fatal(err)
+	}
+	for i, file := range files {
+		log.Printf("[%d] %+v\n", i, file)
 	}
 	return nil
 }
