@@ -130,6 +130,14 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
+	// alpine ipxe netboot image: /ipxe/MAC.img
+	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
+	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
+	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
+	if err != nil {
+		return Fatal(err)
+	}
+
 	// copy cacerts.tgz from package tarball: /ipxe/MAC.cacerts
 	// will be patched into the initrd by rstms-netboot-debian.ipxe as /cacerts.tgz
 	tarballPathname := filepath.Join(m.IpxeDir, fmt.Sprintf("%s.tgz", m.Config.Address))
@@ -181,6 +189,14 @@ func (m *MkBoot) mkbootAlpine() error {
 	minor := match[2]
 
 	distDir, err := m.checkDistDir()
+	if err != nil {
+		return Fatal(err)
+	}
+
+	// alpine ipxe netboot image: /ipxe/MAC.img
+	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
+	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
+	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
