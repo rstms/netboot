@@ -105,20 +105,16 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	}
 	m.BootFiles = append(m.BootFiles, dstGdl)
 
-	// openbsd ipxe netboot image: /ipxe/MAC.img
-	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
-	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
-	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
+	err = m.buildIMG()
 	if err != nil {
 		return Fatal(err)
 	}
 
-	err = injectBootFiles(dstImage, m.BootFiles)
+	err = m.buildISO()
 	if err != nil {
 		return Fatal(err)
 	}
-
-	return m.buildISO()
+	return nil
 }
 
 func (m *MkBoot) mkbootDebian() error {
@@ -174,22 +170,17 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
-	// debian ipxe netboot image (for hetzner rescue): /ipxe/MAC.img
-	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
-	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
-	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
+	err = m.buildIMG()
 	if err != nil {
 		return Fatal(err)
 	}
 
-	// inject autoexec.ipxe into boot image
-	autoexec := filepath.Join(m.TempDir, "autoexec.ipxe")
-	err = injectBootFiles(dstImage, []string{autoexec})
+	err = m.buildISO()
 	if err != nil {
 		return Fatal(err)
 	}
 
-	return m.buildISO()
+	return nil
 }
 
 func (m *MkBoot) mkbootAlpine() error {
@@ -204,14 +195,6 @@ func (m *MkBoot) mkbootAlpine() error {
 	minor := match[2]
 
 	distDir, err := m.checkDistDir()
-	if err != nil {
-		return Fatal(err)
-	}
-
-	// alpine ipxe netboot image: /ipxe/MAC.img
-	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
-	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
-	err = files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -345,7 +328,25 @@ func (m *MkBoot) mkbootAlpine() error {
 		return Fatal(err)
 	}
 
-	err = dumpFAT(dstImage)
+	err = m.buildIMG()
+	if err != nil {
+		return Fatal(err)
+	}
+	err = m.buildISO()
+	if err != nil {
+		return Fatal(err)
+	}
+
+	return nil
+}
+
+// build a netboot IMG with embedded IPXE menu autoexec.ipxe and BootFiles
+func (m *MkBoot) buildIMG() error {
+
+	// hetzner rescue mode netboot image: /ipxe/MAC.img
+	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
+	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
+	err := files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -354,8 +355,7 @@ func (m *MkBoot) mkbootAlpine() error {
 	if err != nil {
 		return Fatal(err)
 	}
-
-	return m.buildISO()
+	return nil
 }
 
 // build a netboot ISO with embedded IPXE menu autoexec.ipxe
@@ -389,7 +389,7 @@ func (m *MkBoot) buildISO() error {
 	}
 
 	// generate the netboot ISO
-	err = bootiso.CreateNetbootISOImage(m.ISO, srcIso, efiImage, autoexec, m.BootFiles)
+	err = bootiso.CreateNetbootISOImage(m.ISO, srcIso, efiImage, m.BootFiles)
 	if err != nil {
 		return Fatal(err)
 	}

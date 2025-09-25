@@ -658,13 +658,9 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// copy autoexec.ipxe to temp dir for embedding in ISO and IMG
-	err = files.CopyFile(filepath.Join(tempDir, "autoexec.ipxe"), autoexec)
-	if err != nil {
-		Warning("%v", Fatal(err))
-		c.fail(w, "failed copying ipxe menu", http.StatusInternalServerError)
-		return
-	}
+	// add autoexec.ipxe to bootFiles
+	log.Printf("addHostHandler: autoexec=%s\n", autoexec)
+	addBootFile(tempDir, "autoexec.ipxe", autoexec, bootFiles)
 
 	// installer response file: /ipxe/MAC.response
 	responsePathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.response", config.Address))
