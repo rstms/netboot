@@ -74,4 +74,4 @@ case $1 in
     preseed_early) shift; preseed_early_command "$@" ;;
     partman_early) shift; partman_early_command "$@" ;;
     preseed_late) shift; preseed_late_command "$@" ;;
-done
+esac
