@@ -5,11 +5,27 @@
 
 echo >>/dev/console "Executing /rc.netboot ($0)"
 
-# mount cdrom
 mkdir /cdrom
-mount -t iso9660 -o ro /dev/cdrom /cdrom  || mount -t msdos -o ro /dev/sda /cdrom
+echo "Attempting /dev/cdrom ISO9660 mount..."
+if mount -t iso9660 -o ro /dev/cdrom /cdrom ; then
+    mount | grep /cdrom
+else
+    echo "CDROM mount failed, trying /dev/sda as FAT filesystem..."
+    apk add mtools
+    if minfo -i /dev/sda | grep SYSLINUX; then
+	mcopy -i /dev/sda ::keymaster.pem /cdrom
+	mcopy -i /dev/sda ::netboot.pem /cdrom
+	mcopy -i /dev/sda ::netboot.key /cdrom
+	mcopy -i /dev/sda ::netboot_exec /cdrom
+	mcopy -i /dev/sda ::netboot.env /cdrom
+    fi
+fi
+
+ls -l /cdrom
+cat /cdrom/netboot.env
 
 . /cdrom/netboot.env
+
 
 if [ -z "$_quiet" ]; then
     exec 1>>/dev/console 2>&1
