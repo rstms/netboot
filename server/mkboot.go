@@ -174,6 +174,11 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
+	err = injectBootFiles(dstImage, m.BootFiles)
+	if err != nil {
+		return Fatal(err)
+	}
+
 	return m.buildISO()
 }
 
@@ -329,6 +334,11 @@ func (m *MkBoot) mkbootAlpine() error {
 	dstTarball := filepath.Join(m.IpxeDir, m.Config.Address+".apkovl.tar.gz")
 	log.Printf("mkbootAlpine: tarball=%s\n", dstTarball)
 	err = files.WriteTarball(dstTarball, ovlDir, true, symlinks, modes)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	err = injectBootFiles(dstImage, m.BootFiles)
 	if err != nil {
 		return Fatal(err)
 	}
