@@ -10,3 +10,4 @@ template/certs
 bootimg/testdata/*
 bootiso/testdata/*
 server/testdata/*
+*.exe
