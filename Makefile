@@ -1,31 +1,24 @@
 # go makefile
 
-include make/osvars.make
-
-# common config
 program != basename $$(pwd)
 version != cat VERSION
-go_version = go1.24.5
-latest_release != gh release list --json tagName --jq '.[0].tagName' | tr -d v
-rstms_modules != awk <go.mod '/^module/{next} /rstms/{print $$1}'
-gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(info git status is clean))
-bin_extension = $(if $(windows),.exe,,)
-release_binary = $(program)-v$(version)-$(os)-$(os_version)-$(arch)$(bin_extension)
+org = rstms
 
+default: build
 
-# common targets
+include make/common.mk
 
-$(program): build
+build: $(binary)
 
-build: fmt 
+$(binary): fmt
 	fix go build . ./...
-	go build
+	go build . ./...
 
 fmt: go.sum
 	fix go fmt . ./...
 
 go.mod:
-	$(go_version) mod init
+	go mod init
 
 go.sum: go.mod
 	go mod tidy
@@ -39,40 +32,38 @@ test: fmt
 debug: fmt
 	go test -v -failfast -count=1 -run $(test) . ./...
 
-release:
+release: build
 	$(gitclean)
 	@$(if $(update),gh release delete -y v$(version),)
 	gh release create v$(version) --notes "v$(version)"
 
-release-upload:
-	cp $(program)$(bin_extension) $(release_binary) && gh release upload v$(latest_release) $(release_binary) --clobber && rm $(release_binary)
+dist: dist/$(release_binary)
 
-latest_module_release = $(shell gh --repo $(1) release list --json tagName --jq '.[0].tagName')
+dist/$(release_binary): $(binary)
+	mkdir -p dist
+	cp $< $@
+	scp $@ $(dist_host):$(dist_dir)/$(notdir $@)
 
-update:
+release-upload: dist
+	cd dist; gh release upload $(latest_release) $(release_binary) $(CLOBBER)
+
+update-modules:
 	@echo checking dependencies for updated versions 
-	@$(foreach module,$(rstms_modules),go get $(module)@$(call latest_module_release,$(module));)
-	curl -L -o cmd/common.go https://raw.githubusercontent.com/rstms/go-common/master/proxy_common_go
-	sed <cmd/common.go >server/common.go 's/^package cmd/package server/'
-
-mirrors:
-	cd cmd && gmake -j 7 
-
-
-clean-mirrors:
-	find cmd/dist -type f -not -name 'gdl??.tgz' -exec rm \{\} \;
+	$(foreach module,$(rstms_modules),go get $(module)@$(call latest_module_release,$(module));)
+	curl -Lso .proxy https://raw.githubusercontent.com/rstms/go-common/master/proxy_common_go
+	$(foreach s,$(common_go),sed <.proxy >$(s) 's/^package cmd/package $(lastword $(subst /, ,$(dir $(s))))/'; ) rm .proxy
+	$(MAKE)
 
 clean:
-	rm -f $(program) *.core 
+	rm -f $(binary) *.core 
 	go clean
 	rm -rf /tmp/netboot*
+	rm -rf dist && mkdir dist
 	rm -rf ~/.cache/netboot/ipxe
 	mkdir -p ~/.cache/netboot/ipxe
 	chown -R $(USER):$(USER) ~/.cache
 
 sterile: clean
-	which $(program) && go clean -i || true
-	go clean
 	go clean -cache
 	go clean -modcache
 	rm -f go.mod go.sum
@@ -80,12 +71,10 @@ sterile: clean
 	rm -rf cmd/certs/*
 	touch cmd/certs/.placeholder
 
-
-run:
-	./netboot -vl-
-
-
 gen:
 	@cd template && $(MAKE)
 
 regen: clean gen
+
+show-vars:
+	@$(foreach var,$(all_variables),echo $(var)=$($(var));)

@@ -3,7 +3,7 @@
 package bootiso
 
 import (
-	common "github.com/rstms/go-common"
+	rstms "github.com/rstms/go-common"
 )
 
 type APIClient interface {
@@ -22,177 +22,177 @@ type Sendmail interface {
 }
 
 func NewAPIClient(prefix, url, certFile, keyFile, caFile string, headers *map[string]string) (APIClient, error) {
-	return common.NewAPIClient(prefix, url, certFile, keyFile, caFile, headers)
+	return rstms.NewAPIClient(prefix, url, certFile, keyFile, caFile, headers)
 }
 
 func OptionKey(cobraCmd CobraCommand, key string) string {
-	return common.OptionKey(cobraCmd, key)
+	return rstms.OptionKey(cobraCmd, key)
 }
 
 func OptionSwitch(cobraCmd CobraCommand, name, flag, description string) {
-	common.OptionSwitch(cobraCmd, name, flag, description)
+	rstms.OptionSwitch(cobraCmd, name, flag, description)
 }
 
 func OptionString(cobraCmd CobraCommand, name, flag, defaultValue, description string) {
-	common.OptionString(cobraCmd, name, flag, defaultValue, description)
+	rstms.OptionString(cobraCmd, name, flag, defaultValue, description)
 }
 
 func OptionStringSlice(cobraCmd CobraCommand, name, flag string, defaultValue []string, description string) {
-	common.OptionStringSlice(cobraCmd, name, flag, defaultValue, description)
+	rstms.OptionStringSlice(cobraCmd, name, flag, defaultValue, description)
 }
 
 func OptionInt(cobraCmd CobraCommand, name, flag string, defaultValue int, description string) {
-	common.OptionInt(cobraCmd, name, flag, defaultValue, description)
+	rstms.OptionInt(cobraCmd, name, flag, defaultValue, description)
 }
 
 func CobraAddCommand(cobraRootCmd, parentCmd, cobraCmd CobraCommand) {
-	common.CobraAddCommand(cobraRootCmd, parentCmd, cobraCmd)
+	rstms.CobraAddCommand(cobraRootCmd, parentCmd, cobraCmd)
 }
 
 func CobraInit(cobraRootCmd CobraCommand) {
-	common.CobraInit(cobraRootCmd)
+	rstms.CobraInit(cobraRootCmd)
 }
 
 func Init(name, version, configFile string) {
-	common.Init(name, version, configFile)
+	rstms.Init(name, version, configFile)
 }
 
 func Shutdown() {
-	common.Shutdown()
+	rstms.Shutdown()
 }
 
 func ProgramName() string {
-	return common.ProgramName()
+	return rstms.ProgramName()
 }
 
 func ProgramVersion() string {
-	return common.ProgramVersion()
+	return rstms.ProgramVersion()
 }
 
 func ConfigDir() string {
-	return common.ConfigDir()
+	return rstms.ConfigDir()
 }
 
 func CheckErr(err error) {
-	common.CheckErr(err)
+	rstms.CheckErr(err)
 }
 
 func FormatJSON(v any) string {
-	return common.FormatJSON(v)
+	return rstms.FormatJSON(v)
 }
 
 func ConfigString(header bool) string {
-	return common.ConfigString(header)
+	return rstms.ConfigString(header)
 }
 
 func FormatYAML(value any) string {
-	return common.FormatYAML(value)
+	return rstms.FormatYAML(value)
 }
 
 func ConfigInit(allowClobber bool) string {
-	return common.ConfigInit(allowClobber)
+	return rstms.ConfigInit(allowClobber)
 }
 
 func ConfigEdit() {
-	common.ConfigEdit()
+	rstms.ConfigEdit()
 }
 
 func AppendConfig(filename string) error {
-	return common.AppendConfig(filename)
+	return rstms.AppendConfig(filename)
 }
 
 func Confirm(prompt string) bool {
-	return common.Confirm(prompt)
+	return rstms.Confirm(prompt)
 }
 
 func Fatal(err error) error {
-	return common.Fatal(err)
+	return rstms.Fatal(err)
 }
 
 func Fatalf(format string, args ...interface{}) error {
-	return common.Fatalf(format, args...)
+	return rstms.Fatalf(format, args...)
 }
 
 func Warning(format string, args ...interface{}) {
-	common.Warning(format, args...)
+	rstms.Warning(format, args...)
 }
 
 func HexDump(data []byte) string {
-	return common.HexDump(data)
+	return rstms.HexDump(data)
 }
 
 func GetHostnameDetail() (string, string, string, error) {
-	return common.GetHostnameDetail()
+	return rstms.GetHostnameDetail()
 }
 
 func HostShortname() (string, error) {
-	return common.HostShortname()
+	return rstms.HostShortname()
 }
 
 func HostDomain() (string, error) {
-	return common.HostDomain()
+	return rstms.HostDomain()
 }
 
 func HostFQDN() (string, error) {
-	return common.HostFQDN()
+	return rstms.HostFQDN()
 }
 
 func IsDir(path string) bool {
-	return common.IsDir(path)
+	return rstms.IsDir(path)
 }
 
 func IsFile(pathname string) bool {
-	return common.IsFile(pathname)
+	return rstms.IsFile(pathname)
 }
 
 func TildePath(path string) (string, error) {
-	return common.TildePath(path)
+	return rstms.TildePath(path)
 }
 
 func NewSendmail(hostname string, port int, username, password, CAFile string) (Sendmail, error) {
-	return common.NewSendmail(hostname, port, username, password, CAFile)
+	return rstms.NewSendmail(hostname, port, username, password, CAFile)
 }
 
 func Expand(value string) string {
-	return common.Expand(value)
+	return rstms.Expand(value)
 }
 
 func ViperKey(key string) string {
-	return common.ViperKey(key)
+	return rstms.ViperKey(key)
 }
 
 func ViperGet(key string) any {
-	return common.ViperGet(key)
+	return rstms.ViperGet(key)
 }
 
 func ViperGetBool(key string) bool {
-	return common.ViperGetBool(key)
+	return rstms.ViperGetBool(key)
 }
 
 func ViperGetString(key string) string {
-	return common.ViperGetString(key)
+	return rstms.ViperGetString(key)
 }
 
 func ViperGetStringSlice(key string) []string {
-	return common.ViperGetStringSlice(key)
+	return rstms.ViperGetStringSlice(key)
 }
 
 func ViperGetStringMapString(key string) map[string]string {
-	return common.ViperGetStringMapString(key)
+	return rstms.ViperGetStringMapString(key)
 }
 
 func ViperGetInt(key string) int {
-	return common.ViperGetInt(key)
+	return rstms.ViperGetInt(key)
 }
 
 func ViperGetInt64(key string) int64 {
-	return common.ViperGetInt64(key)
+	return rstms.ViperGetInt64(key)
 }
 
 func ViperSet(key string, value any) {
-	common.ViperSet(key, value)
+	rstms.ViperSet(key, value)
 }
 
 func ViperSetDefault(key string, value any) {
-	common.ViperSetDefault(key, value)
+	rstms.ViperSetDefault(key, value)
 }

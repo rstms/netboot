@@ -11,3 +11,4 @@ bootimg/testdata/*
 bootiso/testdata/*
 server/testdata/*
 *.exe
+dist
