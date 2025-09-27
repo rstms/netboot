@@ -41,9 +41,9 @@ dist: dist/$(release_binary)
 
 dist/$(release_binary): $(binary)
 	mkdir -p dist
+	scp $< $(dist_target)/$(release_binary)
+	scp $< $(dist_target)/$(dist_binary)
 	cp $< $@
-	scp $@ $(dist_target)/$(notdir $@)
-	scp $@ $(dist_target)/$(dist_binary)
 
 release-upload: dist
 	cd dist; gh release upload $(latest_release) $(release_binary) $(CLOBBER)
