@@ -73,7 +73,7 @@ sterile: clean
 	touch cmd/certs/.placeholder
 
 gen:
-	@cd template && $(MAKE)
+	@cd template && $(MAKE) windows=$(windows)
 
 regen: clean gen
 

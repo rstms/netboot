@@ -2,6 +2,8 @@
 # download OS installer resources
 #
 
+bsdgen = $(if $(windows),@echo "skipping OpenBSD script: $(1)",$(1))
+
 debian_mirror = ftp.us.debian.org
 
 debian-12-kernel = dist/debian/bookworm/amd64/linux
@@ -109,22 +111,22 @@ certs/cacerts.tgz: $(ca_certs)
 	cd certs/debian && tar zcfv ../cacerts.tgz etc
 
 $(openbsd-75-netboot-iso): $(openbsd-75-iso) $(openbsd-75-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
-	scripts/generate_openbsd_netboot 7.5 amd64 iso
+	$(call bsdgen,scripts/generate_openbsd_netboot 7.5 amd64 iso)
 
 $(openbsd-75-netboot-img): $(openbsd-75-netboot-iso)
-	scripts/generate_openbsd_netboot 7.5 amd64 img
+	$(call bsdgen,scripts/generate_openbsd_netboot 7.5 amd64 img)
 
 $(openbsd-76-netboot-iso): $(openbsd-76-iso) $(openbsd-76-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
-	scripts/generate_openbsd_netboot 7.6 amd64 iso
+	$(call bsdgen,scripts/generate_openbsd_netboot 7.6 amd64 iso)
 
 $(openbsd-76-netboot-img): $(openbsd-76-netboot-iso)
-	scripts/generate_openbsd_netboot 7.6 amd64 img
+	$(call bsdgen,scripts/generate_openbsd_netboot 7.6 amd64 img)
 
 $(openbsd-77-netboot-iso): $(openbsd-77-iso) $(openbsd-77-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
-	scripts/generate_openbsd_netboot 7.7 amd64 iso
+	$(call bsdgen,scripts/generate_openbsd_netboot 7.7 amd64 iso)
 
 $(openbsd-77-netboot-img): $(openbsd-77-netboot-iso)
-	scripts/generate_openbsd_netboot 7.7 amd64 img
+	$(call bsdgen,scripts/generate_openbsd_netboot 7.7 amd64 img)
 
 sterile: clean
 	find dist -type f -not -name 'gdl??.tgz' -exec rm \{\} \;
@@ -132,3 +134,4 @@ sterile: clean
 
 clean:
 	rm -f $(generated_files)
+
