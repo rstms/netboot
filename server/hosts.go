@@ -268,15 +268,11 @@ func (c *HostCache) respond(w http.ResponseWriter, label string, response any) {
 }
 
 func (c *HostCache) RootHandler(w http.ResponseWriter, r *http.Request) {
-	if !c.validateHttpRequest(w, r) {
-		return
-	}
-	c.rootHandler(w, r)
+	return
 }
 
 func (c *HostCache) RootHandlerTLS(w http.ResponseWriter, r *http.Request) {
-	c.optionalClientCert(w, r)
-	c.rootHandler(w, r)
+	return
 }
 
 func (c *HostCache) rootHandler(w http.ResponseWriter, r *http.Request) {
@@ -944,4 +940,12 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 
 func normalizeMAC(mac string) string {
 	return strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(mac, ":", ""), "-", ""))
+}
+
+func (c *HostCache) ShutdownHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	c.respond(w, "ShutdownRequestReponse", Response{Message: "shutdown request acknowleged"})
+	InternalShutdownRequest <- struct{}{}
 }

@@ -52,6 +52,8 @@ type NetbootServer struct {
 	shutdownTimeoutSeconds int
 }
 
+var InternalShutdownRequest chan struct{}
+
 func expandFilename(filename string) (string, error) {
 	filename = os.ExpandEnv(filename)
 	if strings.HasPrefix(filename, "~") {
@@ -115,6 +117,8 @@ func NewNetbootServer() (*NetbootServer, error) {
 	}
 	s.hosts = hostCache
 
+	InternalShutdownRequest = make(chan struct{}, 1)
+
 	if s.debug {
 		log.Printf("[%s] config: %s\n", s.Name, FormatJSON(s.GetConfig()))
 	}
@@ -147,8 +151,8 @@ func (s *NetbootServer) Start() error {
 	httpMux := http.NewServeMux()
 	httpMux.HandleFunc("GET /", s.hosts.RootHandler)
 	httpMux.HandleFunc("GET /san/", s.hosts.SanBootHandler)
-
 	if s.proxy {
+		httpMux.HandleFunc("GET /alpine/", s.hosts.AlpineHandler)
 		httpMux.HandleFunc("GET /debian/", s.hosts.DebianHandler)
 		httpMux.HandleFunc("GET /debian-security/", s.hosts.DebianSecurityHandler)
 		httpMux.HandleFunc("GET /pub/OpenBSD/", s.hosts.OpenBSDHandler)
@@ -167,6 +171,7 @@ func (s *NetbootServer) Start() error {
 	httpsMux.HandleFunc("PUT /api/host/", s.hosts.AddHostHandlerTLS)
 	httpsMux.HandleFunc("DELETE /api/host/", s.hosts.DeleteHostHandlerTLS)
 	httpsMux.HandleFunc("POST /api/tarball/", s.hosts.UploadPackageHandlerTLS)
+	httpsMux.HandleFunc("POST /api/shutdown/", s.hosts.ShutdownHandlerTLS)
 
 	if s.proxy {
 		httpsMux.HandleFunc("GET /alpine/", s.hosts.AlpineHandlerTLS)
@@ -283,6 +288,8 @@ func (s *NetbootServer) Run() error {
 		log.Printf("[%s] received SIGINT", s.Name)
 	case <-sigterm:
 		log.Printf("[%s] received SIGTERM", s.Name)
+	case <-InternalShutdownRequest:
+		log.Printf("[%s] shutdown requested", s.Name)
 	}
 	return s.Stop()
 }
