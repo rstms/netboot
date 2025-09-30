@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -426,7 +427,7 @@ func CreateEFIImage(dstImage, efiBin, autoexec string) error {
 		return Fatal(err)
 	}
 	_, name := filepath.Split(efiBin)
-	err = img.AddFile(filepath.Join("EFI", "BOOT", name), efiBin)
+	err = img.AddFile(path.Join("EFI", "BOOT", name), efiBin)
 	if err != nil {
 		return Fatal(err)
 	}
