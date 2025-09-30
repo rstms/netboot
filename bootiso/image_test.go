@@ -1,12 +1,10 @@
 package bootiso
 
 import (
-	common "github.com/rstms/go-common"
+	"github.com/rstms/netboot/files"
 	"github.com/rstms/netboot/template"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
-	"io"
-	"os"
 	"path"
 	"path/filepath"
 	"testing"
@@ -20,6 +18,7 @@ func initTestConfig(t *testing.T) {
 	require.Nil(t, err)
 }
 
+/*
 func mkTestFile(t *testing.T, name string) string {
 	testFile := filepath.Join("testdata", name)
 	if common.IsFile(testFile) {
@@ -43,13 +42,19 @@ func templateFile(t *testing.T, name string) string {
 	}
 	return testFile
 }
+*/
 
 func TestNetbootBootISOCreate(t *testing.T) {
-	outputImage := mkTestFile(t, "output.iso")
-	sourceImage := templateFile(t, "netboot.xyz.iso")
-	efiImage := templateFile(t, "netboot.xyz.efi")
-	autoexecFile := templateFile(t, "openbsd-autoexec.ipxe")
+	outputImage := filepath.Join("testdata", "output.iso")
+	sourceImage := filepath.Join("testdata", "netboot.xyz.iso")
+	err := files.UnzipFileFromFS(sourceImage, path.Join("ipxe", "netboot.xyz.iso.gz"), template.Ipxe)
+	require.Nil(t, err)
+	efiImage := filepath.Join("testdata", "BOOTX64.EFI")
+	err = files.UnzipFileFromFS(efiImage, path.Join("ipxe", "netboot.xyz.efi.gz"), template.Ipxe)
+	require.Nil(t, err)
+	autoexecFile := filepath.Join("testdata", "autoexec.ipxe")
+	err = files.CopyFileFromFS(autoexecFile, path.Join("ipxe", "openbsd-autoexec.ipxe"), template.Ipxe)
 	rootFiles := []string{autoexecFile}
-	err := CreateNetbootISOImage(outputImage, sourceImage, efiImage, rootFiles)
+	err = CreateNetbootISOImage(outputImage, sourceImage, efiImage, rootFiles)
 	require.Nil(t, err)
 }
