@@ -5,6 +5,7 @@ import (
 	"github.com/rstms/netboot/template"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+	"os"
 	"path"
 	"path/filepath"
 	"testing"
@@ -45,15 +46,41 @@ func templateFile(t *testing.T, name string) string {
 */
 
 func TestNetbootBootISOCreate(t *testing.T) {
-	outputImage := filepath.Join("testdata", "output.iso")
-	sourceImage := filepath.Join("testdata", "netboot.xyz.iso")
-	err := files.UnzipFileFromFS(sourceImage, path.Join("ipxe", "netboot.xyz.iso.gz"), template.Ipxe)
+
+	outputImage, err := filepath.Abs(filepath.Join("testdata", "output.iso"))
 	require.Nil(t, err)
-	efiImage := filepath.Join("testdata", "BOOTX64.EFI")
+	if IsFile(outputImage) {
+		err = os.Remove(outputImage)
+		require.Nil(t, err)
+	}
+
+	sourceImage, err := filepath.Abs(filepath.Join("testdata", "netboot.xyz.iso"))
+	require.Nil(t, err)
+	if IsFile(sourceImage) {
+		err = os.Remove(sourceImage)
+		require.Nil(t, err)
+	}
+	err = files.UnzipFileFromFS(sourceImage, path.Join("ipxe", "netboot.xyz.iso.gz"), template.Ipxe)
+	require.Nil(t, err)
+
+	efiImage, err := filepath.Abs(filepath.Join("testdata", "BOOTX64.EFI"))
+	require.Nil(t, err)
+	if IsFile(efiImage) {
+		err = os.Remove(efiImage)
+		require.Nil(t, err)
+	}
 	err = files.UnzipFileFromFS(efiImage, path.Join("ipxe", "netboot.xyz.efi.gz"), template.Ipxe)
 	require.Nil(t, err)
-	autoexecFile := filepath.Join("testdata", "autoexec.ipxe")
+
+	autoexecFile, err := filepath.Abs(filepath.Join("testdata", "autoexec.ipxe"))
+	require.Nil(t, err)
+	if IsFile(autoexecFile) {
+		err = os.Remove(autoexecFile)
+		require.Nil(t, err)
+	}
 	err = files.CopyFileFromFS(autoexecFile, path.Join("ipxe", "openbsd-autoexec.ipxe"), template.Ipxe)
+	require.Nil(t, err)
+
 	rootFiles := []string{autoexecFile}
 	err = CreateNetbootISOImage(outputImage, sourceImage, efiImage, rootFiles)
 	require.Nil(t, err)
