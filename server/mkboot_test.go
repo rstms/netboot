@@ -15,10 +15,10 @@ func TestNetbootServerCreateEFIImage(t *testing.T) {
 	err := CreateEFIImage(dstImage, efiBin, autoexec)
 	require.Nil(t, err)
 
+	// disply only, will fail if mdir is not installed
 	cmd := exec.Command("mdir", "-i", dstImage)
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
-	err = cmd.Run()
-	require.Nil(t, err)
+	cmd.Run()
 
 }
