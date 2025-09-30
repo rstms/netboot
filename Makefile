@@ -26,10 +26,10 @@ go.sum: go.mod
 install: build
 	go install
 
-test: fmt
+test: fmt testfiles
 	go test -v -failfast . ./...
 
-debug: fmt
+debug: fmt testfiles
 	go test -v -failfast -count=1 -run $(test) . ./...
 
 release: build
@@ -79,3 +79,9 @@ regen: clean gen
 
 show-vars:
 	@$(foreach var,$(all_variables),echo $(var)=$($(var));)
+
+testfiles: server/testdata/BOOTX64.EFI
+
+server/testdata/BOOTX64.EFI: template/ipxe/netboot.xyz.efi.gz
+	gzcat <$< >$@
+
