@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-const Version = "1.0.42"
+const Version = "1.0.43"
 
 const DEFAULT_SERVER_NAME = "localhost"
 const DEFAULT_BIND_ADDRESS = "127.0.0.1"
