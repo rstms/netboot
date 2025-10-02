@@ -310,7 +310,7 @@ func (s *NetbootServer) Run() error {
 
 	}()
 
-	if enableMenu {
+	if s.enableMenu {
 		err = sysMenu.Run(nil, menuExited)
 		if err != nil {
 			return Fatal(err)
