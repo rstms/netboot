@@ -6,6 +6,7 @@ require (
 	github.com/cavaliergopher/cpio v1.0.1
 	github.com/diskfs/go-diskfs v1.7.0
 	github.com/rstms/cobra-daemon v0.0.17
+	github.com/rstms/console v0.0.3
 	github.com/rstms/ffs v0.0.7
 	github.com/rstms/go-common v0.2.51
 	github.com/rstms/sysmenu v0.0.6

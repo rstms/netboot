@@ -64,6 +64,8 @@ github.com/rogpeppe/go-internal v1.9.0 h1:73kH8U+JUqXU8lRuOHeVHaa/SZPifC7BkcraZV
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
 github.com/rstms/cobra-daemon v0.0.17 h1:QewEC3bdhvTo0Q0r0RoMHoWcxOnOU23eYy3iULJzitY=
 github.com/rstms/cobra-daemon v0.0.17/go.mod h1:jNDrtlTZM+MVnMWyNg/UT+Ndfem0GNYMWOpLgevO0Bk=
+github.com/rstms/console v0.0.3 h1:y8OGSzWJM7mO54Fm4WkM5k57WCWpLHfgcoOrugBeIi0=
+github.com/rstms/console v0.0.3/go.mod h1:s3hXL6zFnBdqqr84x/9MSDi/UTfv6OmLPule6amcWNk=
 github.com/rstms/ffs v0.0.7 h1:tN8y1ZO6c3Vhst7KFCVKPsH8H8RID3G6jq7vMHi9yxI=
 github.com/rstms/ffs v0.0.7/go.mod h1:yoBLGZG3sazht2lR9EfCKyiHcDAODbFIFcGWUeZ1JAs=
 github.com/rstms/go-common v0.2.51 h1:yapu0Shq20a2qY7odxqEzU9Jk/Q1sCzaB88FQ4immqY=

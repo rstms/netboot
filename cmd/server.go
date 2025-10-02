@@ -31,7 +31,7 @@ POSSIBILITY OF SUCH DAMAGE.
 package cmd
 
 import (
-	"github.com/rstms/netboot/conwinctl"
+	"github.com/rstms/console"
 	"github.com/rstms/netboot/server"
 	"github.com/spf13/cobra"
 )
@@ -47,11 +47,11 @@ requested by the netboot IPXE bootstrap.
 		server, err := server.NewNetbootServer()
 		cobra.CheckErr(err)
 		switch {
-		case ViperGetBool("server.console_minimize"):
-			err := conwinctl.ConsoleMinimize()
+		case ViperGetBool("server.minimize"):
+			err := console.ConsoleMinimize()
 			cobra.CheckErr(err)
-		case ViperGetBool("server.console_hide"):
-			err := conwinctl.ConsoleHide()
+		case ViperGetBool("server.hide"):
+			err := console.ConsoleHide()
 			cobra.CheckErr(err)
 		}
 
@@ -62,7 +62,7 @@ requested by the netboot IPXE bootstrap.
 
 func init() {
 	CobraAddCommand(rootCmd, rootCmd, serverCmd)
-	OptionSwitch(serverCmd, "console-minimize", "", "minimize console window")
-	OptionSwitch(serverCmd, "console-hide", "", "hide console window")
-	OptionSwitch(serverCmd, "system-menu", "", "show tooltray system menu")
+	OptionSwitch(serverCmd, "minimize", "", "minimize console window")
+	OptionSwitch(serverCmd, "hide", "", "hide console window")
+	OptionSwitch(serverCmd, "menu", "", "enable GUI tooltray enu")
 }

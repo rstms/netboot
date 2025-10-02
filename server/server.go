@@ -51,6 +51,7 @@ type NetbootServer struct {
 	certFile               string
 	keyFile                string
 	shutdownTimeoutSeconds int
+	enableMenu             bool
 }
 
 var InternalShutdownRequest chan struct{}
@@ -110,6 +111,7 @@ func NewNetbootServer() (*NetbootServer, error) {
 		caFile:                 ViperGetString(viperPrefix + "ca"),
 		certFile:               ViperGetString(viperPrefix + "cert"),
 		keyFile:                ViperGetString(viperPrefix + "key"),
+		enableMenu:             ViperGetBool(viperPrefix + "menu"),
 	}
 
 	hostCache, err := NewHostCache(s.NetbootDir, s.HttpPort, s.HttpsPort, s.proxy)
@@ -279,13 +281,10 @@ func (s *NetbootServer) Run() error {
 		return Fatal(err)
 	}
 
-	menuEnabled := ViperGetBool("server.system_menu")
 	var sysMenu *menu.Menu
-
-	if menuEnabled {
+	if s.enableMenu {
 		sysMenu = menu.NewMenu("Netboot Server", "Boxen Netboot Server", []byte{})
 	}
-
 	var menuExited chan struct{}
 
 	go func() {
@@ -311,7 +310,7 @@ func (s *NetbootServer) Run() error {
 
 	}()
 
-	if menuEnabled {
+	if enableMenu {
 		err = sysMenu.Run(nil, menuExited)
 		if err != nil {
 			return Fatal(err)
