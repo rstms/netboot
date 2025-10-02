@@ -6,7 +6,7 @@ import (
 	"crypto/x509"
 	"embed"
 	"fmt"
-	"github.com/rstms/sysmenu/menu"
+	"github.com/rstms/systray/menu"
 	"github.com/spf13/viper"
 	"log"
 	"net/http"
