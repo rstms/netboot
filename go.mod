@@ -9,7 +9,7 @@ require (
 	github.com/rstms/console v0.0.3
 	github.com/rstms/ffs v0.0.7
 	github.com/rstms/go-common v0.2.51
-	github.com/rstms/systray v0.0.14
+	github.com/rstms/systray v0.0.15
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
