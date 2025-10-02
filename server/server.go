@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"embed"
 	"fmt"
+	"github.com/rstms/sysmenu/menu"
 	"github.com/spf13/viper"
 	"log"
 	"net/http"
@@ -272,24 +273,51 @@ func (s *NetbootServer) Start() error {
 }
 
 func (s *NetbootServer) Run() error {
+
 	err := s.Start()
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
-	sigint := make(chan os.Signal, 1)
-	signal.Notify(sigint, syscall.SIGINT)
-	sigterm := make(chan os.Signal, 1)
-	signal.Notify(sigterm, syscall.SIGTERM)
-	if s.verbose {
-		fmt.Println("CTRL-C to exit")
+
+	menuEnabled := ViperGetBool("server.system_menu")
+	var sysMenu *menu.Menu
+
+	if menuEnabled {
+		sysMenu = menu.NewMenu("Netboot Server", "Boxen Netboot Server", []byte{})
 	}
-	select {
-	case <-sigint:
-		log.Printf("[%s] received SIGINT", s.Name)
-	case <-sigterm:
-		log.Printf("[%s] received SIGTERM", s.Name)
-	case <-InternalShutdownRequest:
-		log.Printf("[%s] shutdown requested", s.Name)
+
+	var menuExited chan struct{}
+
+	go func() {
+
+		sigint := make(chan os.Signal, 1)
+		signal.Notify(sigint, syscall.SIGINT)
+		sigterm := make(chan os.Signal, 1)
+		signal.Notify(sigterm, syscall.SIGTERM)
+		if s.verbose {
+			fmt.Println("CTRL-C to exit")
+		}
+
+		select {
+		case <-sigint:
+			log.Printf("[%s] received SIGINT", s.Name)
+		case <-sigterm:
+			log.Printf("[%s] received SIGTERM", s.Name)
+		case <-InternalShutdownRequest:
+			log.Printf("[%s] shutdown requested", s.Name)
+		case <-menuExited:
+			log.Printf("[%s] tooltray menu exited", s.Name)
+		}
+
+	}()
+
+	if menuEnabled {
+		err = sysMenu.Run(nil, menuExited)
+		if err != nil {
+			return Fatal(err)
+		}
 	}
+
 	return s.Stop()
+
 }
