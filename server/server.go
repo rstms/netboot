@@ -282,41 +282,72 @@ func (s *NetbootServer) Run() error {
 	}
 
 	var sysMenu *menu.Menu
+
+	menuClicked := make(chan *menu.MenuItem, 1)
+	menuExited := make(chan struct{}, 1)
+
 	if s.enableMenu {
-		sysMenu = menu.NewMenu("Netboot Server", "Boxen Netboot Server", []byte{})
+		sysMenu = menu.NewMenu("Netboot Server v"+Version, "Boxen Netboot Server", []byte{}, menuClicked, menuExited)
+		sysMenu.AddQuitItem("Shutdown", "Shutdown server and exit")
+		sysMenu.AddSeparator()
+		sysMenu.AddItem("Ping", "Write message to log")
 	}
-	var menuExited chan struct{}
 
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, syscall.SIGINT)
+	sigterm := make(chan os.Signal, 1)
+	signal.Notify(sigterm, syscall.SIGTERM)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
 	go func() {
-
-		sigint := make(chan os.Signal, 1)
-		signal.Notify(sigint, syscall.SIGINT)
-		sigterm := make(chan os.Signal, 1)
-		signal.Notify(sigterm, syscall.SIGTERM)
-		if s.verbose {
-			fmt.Println("CTRL-C to exit")
+		menuStopRequired := s.enableMenu
+		defer wg.Done()
+		for done := false; !done; {
+			select {
+			case <-sigint:
+				log.Printf("[%s] received SIGINT\n", s.Name)
+				done = true
+			case <-sigterm:
+				log.Printf("[%s] received SIGTERM\n", s.Name)
+				done = true
+			case <-InternalShutdownRequest:
+				log.Printf("[%s] shutdown requested\n", s.Name)
+				done = true
+			case item := <-menuClicked:
+				log.Printf("[%s] menu clicked: %s\n", s.Name, (*item).Title)
+			case <-menuExited:
+				log.Printf("[%s] tooltray menu exited\n", s.Name)
+				done = true
+				menuStopRequired = false
+			}
 		}
-
-		select {
-		case <-sigint:
-			log.Printf("[%s] received SIGINT", s.Name)
-		case <-sigterm:
-			log.Printf("[%s] received SIGTERM", s.Name)
-		case <-InternalShutdownRequest:
-			log.Printf("[%s] shutdown requested", s.Name)
-		case <-menuExited:
-			log.Printf("[%s] tooltray menu exited", s.Name)
+		if menuStopRequired {
+			err := sysMenu.Stop()
+			if err != nil {
+				Warning("Menu Stop failed with: %v", err)
+			}
 		}
-
 	}()
 
+	if s.verbose {
+		fmt.Println("CTRL-C to exit")
+	}
+
 	if s.enableMenu {
-		err = sysMenu.Run(nil, menuExited)
+		err = sysMenu.Run()
 		if err != nil {
 			return Fatal(err)
 		}
 	}
 
-	return s.Stop()
+	wg.Wait()
 
+	err = s.Stop()
+	if err != nil {
+		return Fatal(err)
+	}
+
+	return nil
 }
