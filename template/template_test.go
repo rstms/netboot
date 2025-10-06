@@ -21,10 +21,11 @@ func TestTemplateDist(t *testing.T) {
 func TestTemplateDistnames(t *testing.T) {
 	names, err := DistNames()
 	require.Nil(t, err)
-	require.Len(t, names, 3)
+	require.Len(t, names, 4)
 	require.Contains(t, names, "debian")
 	require.Contains(t, names, "openbsd")
 	require.Contains(t, names, "alpine")
+	require.Contains(t, names, "windows")
 	log.Printf("DistNames: %v\n", names)
 }
 
@@ -41,6 +42,8 @@ func TestTemplateDistVersions(t *testing.T) {
 			require.Equal(t, []string{"7.5", "7.6", "7.7"}, versions)
 		case "alpine":
 			require.Equal(t, []string{"3.22.1"}, versions)
+		case "windows":
+			require.Equal(t, []string{"11"}, versions)
 		default:
 			require.Truef(t, false, "unexpected OS name: %s", name)
 		}

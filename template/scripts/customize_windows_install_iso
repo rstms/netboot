@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+
+#
+# reference: https://forum.proxmox.com/threads/fully-unattended-windows-11-installation-avoid-press-any-key-to-boot-from-cd-or-dvd.162252/post-754419
+#
+
+iso_source=$1
+iso_output=$2
+
+set -ueo pipefail
+
+usage() {
+    cat ->&2 <<EOF
+usage: $(basename $0): SRC_ISO DST_ISO
+EOF
+    exit 1
+}
+
+unsupported() {
+    echo >&2 unsupported os $OS
+    exit 1
+}
+
+(( $# == 2 )) || usage
+
+if [ ! -f $iso_source ]; then 
+    echo >&2 "SRC_ISO is not a file: $iso_source"
+    usage
+fi
+
+if [ -z "$iso_output" ]; then
+    echo >&2 missing DST_ISO
+    usage
+fi
+
+iso_mount=./isomount
+iso_extracted=./extracted
+volume_label=WINSETUP
+OS=$(uname)
+
+cleanup() {
+    case $OS in 
+	Linux)
+	    if mount | grep -q /dev/loop0; then
+		umount /dev/loop0
+	    fi
+	    if /sbin/losetup -l | grep -q loop0; then
+		losetup -d /dev/loop0
+	    fi
+	    ;;
+	OpenBSD)
+	    if mount | grep -q /dev/vnd0c; then
+		umount /dev/vnd0c
+	    fi
+	    if vnconfig -l vnd0 | grep -v 'not in use'; then
+		vnconfig -u vnd0
+	    fi
+	    ;;
+	*) unsupported;;
+    esac
+    rm -rf $iso_mount
+    rm -rf $iso_extracted 
+}
+
+trap cleanup EXIT
+cleanup
+
+xorriso --version || apt install -y xorriso
+
+for dir in $iso_mount $iso_extracted; do
+    mkdir $dir
+    chmod 0755 $dir
+done
+
+case $OS in 
+    Linux)
+	/sbin/losetup /dev/loop0 $iso_source
+	mount /dev/loop0 $iso_mount
+	;;
+    OpenBSD)
+	vnconfig vnd0 $iso_source
+	mount /dev/vnd0c $iso_mount
+	;;
+    *) unsupported;;
+esac
+
+cp -rp $iso_mount/* $iso_extracted
+
+efiboot=$iso_extracted/efi/microsoft/boot
+
+ls -l $efiboot >before
+mv $efiboot/efisys_noprompt.bin $efiboot/efisys.bin
+mv $efiboot/cdboot_noprompt.efi $efiboot/cdboot.efi
+ls -l $efiboot >after
+
+(
+    xorriso -as mkisofs \
+    -iso-level 3 \
+    -volid "$volume_label" \
+    -eltorito-boot boot/etfsboot.com \
+    -eltorito-catalog boot/boot.cat \
+    -no-emul-boot \
+    -boot-load-size 8 \
+    -boot-info-table \
+    -eltorito-alt-boot \
+    -e efi/microsoft/boot/efisys.bin \
+    -no-emul-boot \
+    -isohybrid-gpt-basdat \
+    -o $iso_output \
+    $iso_extracted
+)

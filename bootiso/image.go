@@ -1,6 +1,7 @@
 package bootiso
 
 import (
+	"bytes"
 	"fmt"
 	diskfs "github.com/diskfs/go-diskfs"
 	"github.com/diskfs/go-diskfs/disk"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -17,6 +19,7 @@ const (
 	ISO_PAD_BYTES                = 1024
 	ISO_LOGICAL_BLOCK_SIZE       = 2048
 	EFI_DISK_SIZE          int64 = 1440 * 1024
+	MINIMUM_ISO_SIZE             = 1024 * 48
 )
 
 func normalizePathname(pathname string) string {
@@ -86,10 +89,11 @@ func copyFileToImage(imageFS filesystem.FileSystem, dstPath string, srcPath stri
 		return Fatal(err)
 	}
 	defer ofp.Close()
-	_, err = io.Copy(ofp, ifp)
+	count, err := io.Copy(ofp, ifp)
 	if err != nil {
 		return Fatal(err)
 	}
+	log.Printf("wrote %d bytes to %s\n", count, dstPath)
 	return nil
 }
 
@@ -166,17 +170,16 @@ func ListImageFiles(imageFilename string) ([]string, error) {
 }
 
 func fileSize(filename string) (int64, error) {
-	_, name := filepath.Split(filename)
 	stat, err := os.Stat(filename)
 	if err != nil {
 		return 0, Fatal(err)
 	}
 	size := stat.Size()
-	log.Printf("%s size: %d\n", name, size)
+	log.Printf("%s size: %d\n", filename, size)
 	return size, nil
 }
 
-func CreateNetbootISOImage(dstImage, srcImage, efiImage string, rootFiles []string) error {
+func CreateNetbootISO(dstImage, srcImage, efiImage string, rootFiles []string) error {
 
 	log.Printf("CreateNetbootIsoImage: dst=%s src=%s efi=%s files=%v\n", dstImage, srcImage, efiImage, rootFiles)
 
@@ -235,6 +238,13 @@ func CreateNetbootISOImage(dstImage, srcImage, efiImage string, rootFiles []stri
 	if err != nil {
 		return Fatal(err)
 	}
+
+	defer func() {
+		err = dstFS.Close()
+		if err != nil {
+			Warning("%v", Fatalf("failure closing ISO9660 filesystem: %v", err))
+		}
+	}()
 
 	//log.Printf("output ISO filesystem: %+v\n", dstFS)
 
@@ -324,5 +334,138 @@ func CreateNetbootISOImage(dstImage, srcImage, efiImage string, rootFiles []stri
 		return Fatal(err)
 	}
 	log.Printf("finalized iso: %s\n", dstImage)
+	return nil
+}
+
+func DirSize(srcDir string) (int64, error) {
+	var size int64
+	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	return size, err
+}
+
+func createJolietISO(outFile, srcDir, volumeLabel string) error {
+
+	cmd := exec.Command(
+		"mkisofs",
+		"-V", volumeLabel,
+		"-r",
+		"-J",
+		"-o", outFile,
+		srcDir,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	log.Println(cmd)
+	err := cmd.Run()
+	if err != nil {
+		return Fatal(err)
+	}
+	ostr := strings.TrimSpace(stdout.String())
+	if ostr != "" {
+		log.Printf("stdout: %s\n", ostr)
+	}
+	estr := strings.TrimSpace(stderr.String())
+	if estr != "" {
+		log.Printf("stderr: %s\n", estr)
+	}
+	return nil
+}
+
+func CreateISO(outFile, srcDir, volumeLabel string, joliet bool) error {
+
+	log.Printf("CreateISO: out=%s src=%s label=%s joliet=%v\n", outFile, srcDir, volumeLabel, joliet)
+
+	if joliet {
+		return createJolietISO(outFile, srcDir, volumeLabel)
+	}
+
+	size, err := DirSize(srcDir)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	if size < MINIMUM_ISO_SIZE {
+		size = MINIMUM_ISO_SIZE
+	}
+
+	var logicalBlocksize diskfs.SectorSize = 2048
+
+	isoDisk, err := diskfs.Create(outFile, size, logicalBlocksize)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	fspec := disk.FilesystemSpec{
+		Partition:   0,
+		FSType:      filesystem.TypeISO9660,
+		VolumeLabel: volumeLabel,
+	}
+	isofs, err := isoDisk.CreateFilesystem(fspec)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	err = filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return Fatal(err)
+		}
+
+		if info.IsDir() {
+			err = isofs.Mkdir(relPath)
+			if err != nil {
+				return Fatal(err)
+			}
+			return nil
+		}
+
+		if !info.IsDir() {
+			rw, err := isofs.OpenFile(relPath, os.O_CREATE|os.O_RDWR)
+			if err != nil {
+				return Fatal(err)
+			}
+
+			in, err := os.Open(path)
+			if err != nil {
+				return Fatal(err)
+			}
+			defer in.Close()
+
+			_, err = io.Copy(rw, in)
+			if err != nil {
+				return Fatal(err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return Fatal(err)
+	}
+
+	iso, ok := isofs.(*iso9660.FileSystem)
+	if !ok {
+		return Fatalf("not an iso9660 filesystem")
+	}
+
+	err = iso.Finalize(iso9660.FinalizeOptions{
+		RockRidge: true,
+	})
+	if err != nil {
+		return Fatal(err)
+	}
 	return nil
 }

@@ -125,6 +125,84 @@ func ExtractTarballFile(dstPath, srcPath, tarPath string) error {
 	return Fatal(os.ErrNotExist)
 }
 
+// extract directories and files from tgz tarball
+// caveat: extracts ONLY directories and files; sets owner:group to current user
+func ExtractTarball(dstDir, tarPath string) error {
+	log.Printf("ExtractTarball: destDir=%s, tarball=%s\n", dstDir, tarPath)
+
+	tarFile, err := os.Open(tarPath)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer tarFile.Close()
+	gzReader, err := gzip.NewReader(tarFile)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer gzReader.Close()
+	tarReader := tar.NewReader(gzReader)
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return Fatal(err)
+		}
+		dstName := filepath.Join(dstDir, header.Name)
+		//log.Printf("dstName=%s\n", dstName)
+		var dstMode fs.FileMode
+		dstMode = fs.FileMode(header.Mode & int64(fs.ModePerm))
+		switch header.Typeflag {
+		case tar.TypeDir:
+			//log.Printf("MkdirAll.dir: %s\n", dstName)
+			err := os.MkdirAll(dstName, dstMode)
+			if err != nil {
+				return Fatal(err)
+			}
+		case tar.TypeReg:
+			dir, _ := filepath.Split(dstName)
+			if !IsDir(dir) {
+				//log.Printf("MkdirAll.file: %s\n", dir)
+				err := os.MkdirAll(dir, 0755)
+				if err != nil {
+					return Fatal(err)
+				}
+			}
+			err := extractFile(dstName, tarReader)
+			if err != nil {
+				return Fatal(err)
+			}
+			err = os.Chmod(dstName, dstMode)
+			if err != nil {
+				return Fatal(err)
+			}
+		default:
+			return Fatalf("unexpected tarHeaderType: %d", header.Typeflag)
+		}
+
+		err = os.Chtimes(dstName, time.Time{}, header.ModTime)
+		if err != nil {
+			return Fatal(err)
+
+		}
+	}
+	return nil
+}
+
+func extractFile(dstPath string, tarReader io.Reader) error {
+	dstFile, err := os.Create(dstPath)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer dstFile.Close()
+	_, err = io.Copy(dstFile, tarReader)
+	if err != nil {
+		return Fatal(err)
+	}
+	return nil
+}
+
 type LinkInfo struct {
 	name    string
 	size    int64

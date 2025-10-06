@@ -9,6 +9,7 @@ require (
 	github.com/rstms/console v0.0.3
 	github.com/rstms/ffs v0.0.7
 	github.com/rstms/go-common v0.2.51
+	github.com/rstms/iso-kit v0.0.0-20251006152227-dbce8dbec2af
 	github.com/rstms/systray v0.0.15
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
@@ -20,12 +21,16 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/djherbis/times v1.6.0 // indirect
 	github.com/elliotwutingfeng/asciiset v0.0.0-20230602022725-51bbb787efab // indirect
+	github.com/fatih/color v1.18.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pierrec/lz4/v4 v4.1.17 // indirect
 	github.com/pkg/xattr v0.4.9 // indirect

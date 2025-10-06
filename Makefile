@@ -85,3 +85,5 @@ testfiles: server/testdata/BOOTX64.EFI
 server/testdata/BOOTX64.EFI: template/ipxe/netboot.xyz.efi.gz
 	gzcat <$< >$@
 
+run:
+	./netboot -dL- server

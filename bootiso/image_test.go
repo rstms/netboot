@@ -5,7 +5,9 @@ import (
 	"github.com/rstms/netboot/template"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+	"log"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"testing"
@@ -19,33 +21,7 @@ func initTestConfig(t *testing.T) {
 	require.Nil(t, err)
 }
 
-/*
-func mkTestFile(t *testing.T, name string) string {
-	testFile := filepath.Join("testdata", name)
-	if common.IsFile(testFile) {
-		err := os.Remove(testFile)
-		require.Nil(t, err)
-	}
-	return testFile
-}
-
-func templateFile(t *testing.T, name string) string {
-	testFile := filepath.Join("testdata", name)
-	if !common.IsFile(testFile) {
-		src, err := template.Ipxe.Open(path.Join("ipxe", name))
-		require.Nil(t, err)
-		defer src.Close()
-		dst, err := os.Create(testFile)
-		require.Nil(t, err)
-		defer dst.Close()
-		_, err = io.Copy(dst, src)
-		require.Nil(t, err)
-	}
-	return testFile
-}
-*/
-
-func TestNetbootBootISOCreate(t *testing.T) {
+func TestCreateNetbootISO(t *testing.T) {
 
 	outputImage, err := filepath.Abs(filepath.Join("testdata", "output.iso"))
 	require.Nil(t, err)
@@ -82,6 +58,20 @@ func TestNetbootBootISOCreate(t *testing.T) {
 	require.Nil(t, err)
 
 	rootFiles := []string{autoexecFile}
-	err = CreateNetbootISOImage(outputImage, sourceImage, efiImage, rootFiles)
+	err = CreateNetbootISO(outputImage, sourceImage, efiImage, rootFiles)
 	require.Nil(t, err)
+}
+
+func TestCreateISO(t *testing.T) {
+	srcDir := filepath.Join("testdata", "isofiles")
+	isoFile := filepath.Join("testdata", "out.iso")
+	if IsFile(isoFile) {
+		err := os.Remove(isoFile)
+		require.Nil(t, err)
+	}
+	err := CreateISO(isoFile, srcDir, "test_iso", true)
+	require.Nil(t, err)
+	info, err := exec.Command("isoinfo", "-d", "-i", isoFile).Output()
+	require.Nil(t, err)
+	log.Println(string(info))
 }

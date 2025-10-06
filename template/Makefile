@@ -38,13 +38,16 @@ alpine-3221-kernel = dist/alpine/3.22.1/x86_64/kernel
 alpine-3221-initrd = dist/alpine/3.22.1/x86_64/initrd
 alpine-3221-modloop = dist/alpine/3.22.1/x86_64/modloop
 
+custom-win11-iso = dist/windows/11/x64/customized_Win11_25H2_English_x64.iso
+win11-iso = dist/windows/11/x64/Win11_25H2_English_x64.iso
+
 dist_files = \
 	$(debian-12-kernel) $(debian-12-initrd) \
 	$(debian-13-kernel) $(debian-13-initrd) \
 	$(openbsd-75-iso) $(openbsd-75-img) \
 	$(openbsd-76-iso) $(openbsd-76-img) \
 	$(openbsd-77-iso) $(openbsd-77-img) \
-	$(alpine-3221-kernel) $(alpine-3221-initrd) $(alpine-3221-modloop)
+	$(alpine-3221-kernel) $(alpine-3221-initrd) $(alpine-3221-modloop) \
 
 openbsd_netboot_iso_files = $(openbsd-75-netboot-iso) $(openbsd-76-netboot-iso) $(openbsd-77-netboot-iso)
 openbsd_netboot_img_files = $(openbsd-75-netboot-img) $(openbsd-76-netboot-img) $(openbsd-77-netboot-img)
@@ -54,6 +57,14 @@ generated_files = $(openbsd_netboot_iso_files) $(openbsd_netboot_img_files)
 gen: $(dist_files) $(generated_files)
 
 regen: clean gen
+
+wingen: $(custom-win11-iso)
+
+$(win11-iso):
+	curl -L https://vega.rstms.net/pub/iso/$(notdir $@) -o $@
+
+$(custom-win11-iso): $(win11-iso)
+	doas scripts/customize_windows_install_iso $< $@
 
 $(debian-12-kernel):
 	mkdir -p $(dir $@)
@@ -127,6 +138,7 @@ $(openbsd-77-netboot-iso): $(openbsd-77-iso) $(openbsd-77-img) $(wildcard mkboot
 
 $(openbsd-77-netboot-img): $(openbsd-77-netboot-iso)
 	$(call bsdgen,scripts/generate_openbsd_netboot 7.7 amd64 img)
+
 
 sterile: clean
 	find dist -type f -not -name 'gdl??.tgz' -exec rm \{\} \;

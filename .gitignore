@@ -12,3 +12,4 @@ bootiso/testdata/*
 server/testdata/*
 *.exe
 dist
+template/ipxe/*.rd

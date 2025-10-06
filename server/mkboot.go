@@ -62,6 +62,11 @@ func (m *MkBoot) Generate() (string, error) {
 		if err != nil {
 			return "", Fatal(err)
 		}
+	case "windows":
+		err := m.mkbootWindows()
+		if err != nil {
+			return "", Fatal(err)
+		}
 	default:
 		return "", Fatalf("unexpected OS: '%s'", m.Config.OS)
 	}
@@ -341,6 +346,35 @@ func (m *MkBoot) mkbootAlpine() error {
 	return nil
 }
 
+func (m *MkBoot) mkbootWindows() error {
+	log.Printf("mkbootWindows: %s %s\n", m.Config.Version, m.Config.Arch)
+
+	// generate error if version/arch not present
+	_, err := m.checkDistDir()
+	if err != nil {
+		return Fatal(err)
+	}
+
+	isoDir := filepath.Join(m.TempDir, "iso")
+
+	netbootDir := filepath.Join(isoDir, "$OEM$", "$1", "netboot")
+	err = files.ExtractTarball(netbootDir, filepath.Join(m.IpxeDir, m.Config.Address+".tgz"), true)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	err = files.CopyFile(filepath.Join(isoDir, "autounattend.xml"), filepath.Join(m.IpxeDir, m.Config.Address+".response"))
+	if err != nil {
+		return Fatal(err)
+	}
+
+	err = bootiso.CreateISO(m.ISO, isoDir, "unattend_iso", true)
+	if err != nil {
+		return Fatal(err)
+	}
+	return nil
+}
+
 // build a netboot IMG with embedded IPXE menu autoexec.ipxe and BootFiles
 func (m *MkBoot) buildIMG() error {
 
@@ -390,7 +424,7 @@ func (m *MkBoot) buildISO() error {
 	}
 
 	// generate the netboot ISO
-	err = bootiso.CreateNetbootISOImage(m.ISO, srcIso, efiImage, *m.BootFiles)
+	err = bootiso.CreateNetbootISO(m.ISO, srcIso, efiImage, *m.BootFiles)
 	if err != nil {
 		return Fatal(err)
 	}
