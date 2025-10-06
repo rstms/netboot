@@ -358,7 +358,7 @@ func (m *MkBoot) mkbootWindows() error {
 	isoDir := filepath.Join(m.TempDir, "iso")
 
 	netbootDir := filepath.Join(isoDir, "$OEM$", "$1", "netboot")
-	err = files.ExtractTarball(netbootDir, filepath.Join(m.IpxeDir, m.Config.Address+".tgz"), true)
+	err = files.ExtractTarball(netbootDir, filepath.Join(m.IpxeDir, m.Config.Address+".tgz"))
 	if err != nil {
 		return Fatal(err)
 	}
