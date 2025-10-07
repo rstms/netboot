@@ -61,6 +61,7 @@ regen: clean gen
 wingen: $(custom-win11-iso)
 
 $(win11-iso):
+	mkdir -p $(dir $@)
 	curl -L https://vega.rstms.net/pub/iso/$(notdir $@) -o $@
 
 $(custom-win11-iso): $(win11-iso)
