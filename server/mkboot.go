@@ -357,45 +357,22 @@ func (m *MkBoot) mkbootWindows() error {
 
 	isoDir := filepath.Join(m.TempDir, "iso")
 
-	oemDir := filepath.Join(isoDir, "$OEM$", "$1")
-
-	tarballDir := filepath.Join(m.TempDir, "tarball")
-	err = files.ExtractTarball(tarballDir, filepath.Join(m.IpxeDir, m.Config.Address+".tgz"))
+	netbootDir := filepath.Join(isoDir, "$OEM$", "$1", "netboot")
+	err = os.MkdirAll(netbootDir, 0700)
 	if err != nil {
 		return Fatal(err)
 	}
 
-	// if tarball has Users subdirs, copy them to OEM root drive
-	usersDir := filepath.Join(tarballDir, "Users")
-	if IsDir(usersDir) {
-		userDirs, err := os.ReadDir(usersDir)
-		if err != nil {
-			return Fatal(err)
-		}
-		for _, userDir := range userDirs {
-			_, name := filepath.Split(userDir.Name())
-			err = files.CopyTree(m.windowsUserDir(oemDir, name), filepath.Join(usersDir, userDir.Name()))
-			if err != nil {
-				return Fatal(err)
-			}
-		}
-		err = os.RemoveAll(usersDir)
-		if err != nil {
-			return Fatal(err)
-		}
-	}
-
-	netbootDir := filepath.Join(m.windowsUserDir(oemDir, "Administrator"), "netboot")
-	if !IsDir(netbootDir) {
-		err = os.MkdirAll(netbootDir, 0700)
-		if err != nil {
-			return Fatal(err)
-		}
-	}
-
-	err = files.CopyTree(netbootDir, tarballDir)
+	err = files.ExtractTarball(netbootDir, filepath.Join(m.IpxeDir, m.Config.Address+".tgz"))
 	if err != nil {
 		return Fatal(err)
+	}
+
+	for _, name := range []string{"postinstall", "boxen.run", "install.site"} {
+		err := os.Rename(filepath.Join(netbootDir, name), filepath.Join(netbootDir, name)+".ps1")
+		if err != nil {
+			return Fatal(err)
+		}
 	}
 
 	err = files.CopyFile(filepath.Join(isoDir, "autounattend.xml"), filepath.Join(m.IpxeDir, m.Config.Address+".response"))
