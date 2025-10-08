@@ -357,8 +357,43 @@ func (m *MkBoot) mkbootWindows() error {
 
 	isoDir := filepath.Join(m.TempDir, "iso")
 
-	netbootDir := filepath.Join(isoDir, "$OEM$", "$1", "netboot")
-	err = files.ExtractTarball(netbootDir, filepath.Join(m.IpxeDir, m.Config.Address+".tgz"))
+	oemDir := filepath.Join(isoDir, "$OEM$", "$1")
+
+	tarballDir := filepath.Join(m.TempDir, "tarball")
+	err = files.ExtractTarball(tarballDir, filepath.Join(m.IpxeDir, m.Config.Address+".tgz"))
+	if err != nil {
+		return Fatal(err)
+	}
+
+	// if tarball has Users subdirs, copy them to OEM root drive
+	usersDir := filepath.Join(tarballDir, "Users")
+	if IsDir(usersDir) {
+		userDirs, err := os.ReadDir(usersDir)
+		if err != nil {
+			return Fatal(err)
+		}
+		for _, userDir := range userDirs {
+			_, name := filepath.Split(userDir.Name())
+			err = files.CopyTree(m.windowsUserDir(oemDir, name), filepath.Join(usersDir, userDir.Name()))
+			if err != nil {
+				return Fatal(err)
+			}
+		}
+		err = os.RemoveAll(usersDir)
+		if err != nil {
+			return Fatal(err)
+		}
+	}
+
+	netbootDir := filepath.Join(m.windowsUserDir(oemDir, "Administrator"), "netboot")
+	if !IsDir(netbootDir) {
+		err = os.MkdirAll(netbootDir, 0700)
+		if err != nil {
+			return Fatal(err)
+		}
+	}
+
+	err = files.CopyTree(netbootDir, tarballDir)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -373,6 +408,10 @@ func (m *MkBoot) mkbootWindows() error {
 		return Fatal(err)
 	}
 	return nil
+}
+
+func (m *MkBoot) windowsUserDir(oemDir, userName string) string {
+	return filepath.Join(oemDir, "Users", userName+"."+strings.ToUpper(m.Config.Hostname))
 }
 
 // build a netboot IMG with embedded IPXE menu autoexec.ipxe and BootFiles

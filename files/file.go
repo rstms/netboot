@@ -49,6 +49,36 @@ func CopyFile(dstPathname, srcPathname string) error {
 	return nil
 }
 
+func CopyTree(dstPath, srcPath string) error {
+	err := filepath.Walk(srcPath, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return Fatal(err)
+		}
+		dstFile, err := filepath.Rel(srcPath, path)
+		if err != nil {
+			return Fatal(err)
+		}
+		dstFile = filepath.Join(dstPath, dstFile)
+		switch {
+		case info.IsDir():
+			err = os.MkdirAll(dstFile, 0700)
+			if err != nil {
+				return Fatal(err)
+			}
+		case info.Mode().IsRegular():
+			err = CopyFile(dstFile, path)
+			if err != nil {
+				return Fatal(err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func UnzipFileFromFS(dstPathname, srcPathname string, srcFS fs.FS) error {
 
 	tempDir, err := os.MkdirTemp("", "unzip-*")

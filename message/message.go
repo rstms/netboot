@@ -4,6 +4,7 @@ type NetbootConfig struct {
 	Address           string `json:"address"`
 	OS                string `json:"os"`
 	Version           string `json:"version"`
+	Hostname          string `json:"hostname"`
 	Arch              string `json:"arch"`
 	Serial            string `json:"serial"`
 	Mirror            string `json:"mirror"`
