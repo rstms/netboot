@@ -375,6 +375,11 @@ func (m *MkBoot) mkbootWindows() error {
 		}
 	}
 
+	err = files.CopyFile(filepath.Join(netbootDir, "netboot.env"), filepath.Join(m.TempDir, "netboot.env"))
+	if err != nil {
+		return Fatal(err)
+	}
+
 	err = files.CopyFile(filepath.Join(isoDir, "autounattend.xml"), filepath.Join(m.IpxeDir, m.Config.Address+".response"))
 	if err != nil {
 		return Fatal(err)
