@@ -59,15 +59,16 @@ clean:
 	go clean
 	rm -rf /tmp/netboot*
 	rm -rf dist && mkdir dist
-	rm -rf ~/.cache/netboot/ipxe
-	mkdir -p ~/.cache/netboot/ipxe
-	chown -R $(USER):$(USER) ~/.cache
+	rm -rf $(cache_dir)/ipxe
+	mkdir -p $(cache_dir)/ipxe
+	mkdir -p $(config_dir)
+	$(if $(windows),,chown -R $(USER):$(USER) $(config_dir))
 
 sterile: clean
 	go clean -cache
 	go clean -modcache
 	rm -f go.mod go.sum
-	rm -rf ~/.cache/netboot
+	rm -rf $(cache_dir)
 	rm -rf cmd/certs/*
 	touch cmd/certs/.placeholder
 

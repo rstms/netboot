@@ -56,8 +56,8 @@ dist_binary := $(program)-latest-$(os)-$(os_version)-$(arch)$(binary_extension)
 #
 # configuration
 #
-config_dir = $(if $(windows),$(USERPROFILE)/AppData/Roaming/$(program),$(HOME)/.config/$(program))
-cache_dir = $(if $(windows),$(USERPROFILE)/AppData/Local/$(program),$(HOME)/.cache/$(program))
+config_dir = $(if $(windows),$(shell cygpath -u $(APPDATA))/$(program),$(HOME)/.config/$(program))
+cache_dir = $(if $(windows),$(shell cygpath -u $(LOCALAPPDATA))/$(program),$(HOME)/.cache/$(program))
 
 #
 # diagnostics
