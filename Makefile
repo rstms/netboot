@@ -1,8 +1,7 @@
 # go makefile
 
-program != basename $$(pwd)
-version != cat VERSION
-org = rstms
+program := $(shell basename $$(pwd))
+version := $(shell cat VERSION)
 
 default: build
 

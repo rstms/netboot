@@ -10,10 +10,10 @@ os := $(if $(SYSTEMROOT),windows,$(shell uname | tr A-Z a-z))
 #
 
 ifeq ($(os),windows)
-  hostname := $(shell cmd /c hostname)
-  fqdn := $(hostname).$(lastword $(shell ipconfig /all | findstr /R /C:"Connection-specific DNS Suffix.*: [^ ]"))
-  os_version := $(firstword $(subst ., ,$(lastword $(subst ],,$(shell cmd /c ver)))))
-  arch := $(subst -,,$(lastword $(subst =, ,$(shell wmic os get osarchitecture /VALUE))))
+  hostname := $(shell windows_info hostname)
+  fqdn := $(shell windows_info fqdn)
+  os_version := $(shell windows_info version)
+  arch := $(shell windows_info arch)
   windows := 1
 endif
 
@@ -39,6 +39,7 @@ binary := $(program)$(binary_extension)
 #
 # module versions
 #
+org = rstms
 rstms_modules != awk <go.mod '/^module/{next} /rstms/{print $$1}'
 common_go = $(wildcard */common.go) $(wildcard */*/common.go)
 latest_module_release = $(shell gh --repo $(1) release list --json tagName --jq '.[0].tagName')
@@ -63,7 +64,7 @@ cache_dir = $(if $(windows),$(USERPROFILE)/AppData/Local/$(program),$(HOME)/.cac
 #
 all_variables = \
     program version org \
-    os arch hostname fqdn windows openbsd linux \
+    os os_version arch hostname fqdn windows openbsd linux \
     binary_extension binary \
     rstms_modules common_go \
     latest_release release_binary dist_target dist_binary \
