@@ -149,6 +149,8 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		}
 	}
 
+	log.Printf("ipxe dir: %s\n", c.ipxeDir)
+
 	return &c, nil
 }
 
