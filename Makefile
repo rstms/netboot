@@ -73,7 +73,7 @@ sterile: clean
 	touch cmd/certs/.placeholder
 
 gen:
-	@cd template && $(MAKE) windows=$(windows)
+	@cd template && $(MAKE) linux=$(linux) openbsd=$(openbsd) windows=$(windows)
 
 regen: clean gen
 

@@ -88,10 +88,8 @@ cp -rp $iso_mount/* $iso_extracted
 
 efiboot=$iso_extracted/efi/microsoft/boot
 
-ls -l $efiboot >before
 mv $efiboot/efisys_noprompt.bin $efiboot/efisys.bin
 mv $efiboot/cdboot_noprompt.efi $efiboot/cdboot.efi
-ls -l $efiboot >after
 
 (
     xorriso -as mkisofs \

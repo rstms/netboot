@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -ueo pipefail
+doas $(pwd)/scripts/mkboot.windows $1 $2

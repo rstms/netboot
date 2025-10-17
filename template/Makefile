@@ -2,7 +2,8 @@
 # download OS installer resources
 #
 
-bsdgen = $(if $(windows),@echo "skipping OpenBSD script: $(1)",$(1))
+bsdgen = $(if $(openbsd),$(1),@echo "skipping OpenBSD script: $(1)")
+unixgen = $(if $(windows),@echo "skipping OpenBSD script: $(1)",$(1))
 
 debian_mirror = ftp.us.debian.org
 
@@ -54,7 +55,7 @@ openbsd_netboot_img_files = $(openbsd-75-netboot-img) $(openbsd-76-netboot-img) 
 
 generated_files = $(openbsd_netboot_iso_files) $(openbsd_netboot_img_files)
 
-gen: $(dist_files) $(generated_files)
+gen: $(dist_files) $(generated_files) $(custom-win11-iso)
 
 regen: clean gen
 
@@ -65,7 +66,7 @@ $(win11-iso):
 	curl -L https://vega.rstms.net/pub/iso/$(notdir $@) -o $@
 
 $(custom-win11-iso): $(win11-iso)
-	doas scripts/customize_windows_install_iso $< $@
+	$(call unixgen,scripts/generate_windows_netboot $< $@)
 
 $(debian-12-kernel):
 	mkdir -p $(dir $@)
