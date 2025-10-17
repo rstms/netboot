@@ -39,8 +39,8 @@ alpine-3221-kernel = dist/alpine/3.22.1/x86_64/kernel
 alpine-3221-initrd = dist/alpine/3.22.1/x86_64/initrd
 alpine-3221-modloop = dist/alpine/3.22.1/x86_64/modloop
 
-custom-win11-iso = dist/windows/11/x64/customized_Win11_25H2_English_x64.iso
-win11-iso = dist/windows/11/x64/Win11_25H2_English_x64.iso
+custom-win11-iso = iso/customized_Win11_25H2_English_x64.iso
+win11-iso = iso/Win11_25H2_English_x64.iso
 
 dist_files = \
 	$(debian-12-kernel) $(debian-12-initrd) \

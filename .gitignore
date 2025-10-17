@@ -13,3 +13,4 @@ server/testdata/*
 *.exe
 dist
 template/ipxe/*.rd
+template/iso
