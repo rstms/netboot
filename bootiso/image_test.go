@@ -62,8 +62,25 @@ func TestCreateNetbootISO(t *testing.T) {
 	require.Nil(t, err)
 }
 
+func writeTestFile(t *testing.T, filename string) {
+	data, err := exec.Command("fortune").Output()
+	require.Nil(t, err)
+	err = os.WriteFile(filename, data, 0600)
+	require.Nil(t, err)
+}
+
 func TestCreateISO(t *testing.T) {
 	srcDir := filepath.Join("testdata", "isofiles")
+	if !IsDir(srcDir) {
+		err := os.Mkdir(srcDir, 0700)
+		require.Nil(t, err)
+		err = os.MkdirAll(filepath.Join(srcDir, "foo", "bar", "baz"), 0700)
+		require.Nil(t, err)
+		writeTestFile(t, filepath.Join(srcDir, "test1"))
+		writeTestFile(t, filepath.Join(srcDir, "foo", "test2"))
+		writeTestFile(t, filepath.Join(srcDir, "bar", "test3"))
+		writeTestFile(t, filepath.Join(srcDir, "baz", "test4"))
+	}
 	isoFile := filepath.Join("testdata", "out.iso")
 	if IsFile(isoFile) {
 		err := os.Remove(isoFile)

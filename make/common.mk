@@ -55,8 +55,8 @@ gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(i
 #
 release_binary := $(program)-v$(version)-$(os)-$(os_version)-$(arch)$(binary_extension)
 dist_binary := $(program)-latest-$(os)-$(os_version)-$(arch)$(binary_extension)
-dist_host != $(shell [ -e ~/.dist_host ] && cat ~/.dist_host)
-dist_upload = $(if $(dist_host),scp -p $(1) $(dist_host):$(2),:)
+dist_upload_host ?= $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host)
+dist_upload = $(if $(dist_upload_host),scp -p $(1) $(dist_upload_host):$(2),:)
 
 #
 # configuration
@@ -72,5 +72,5 @@ all_variables = \
     os os_version arch hostname fqdn windows openbsd linux \
     binary_extension binary \
     rstms_modules common_go \
-    latest_release release_binary dist_target dist_binary \
+    latest_release release_binary dist_target dist_binary dist_upload_host \
     config_dir cache_dir

@@ -14,3 +14,4 @@ server/testdata/*
 dist
 template/ipxe/*.rd
 template/iso
+.fmt

@@ -9,12 +9,17 @@ include make/common.mk
 
 build: $(binary)
 
-$(binary): fmt
+$(binary): .fmt
 	fix go build . ./...
 	go build
 
-fmt: go.sum
+go_src := $(wildcard *.go) $(wildcard **/*.go)
+
+.fmt: $(go_src) go.sum
 	fix go fmt . ./...
+	touch $@
+
+fmt: .fmt
 
 go.mod:
 	go mod init
@@ -22,30 +27,28 @@ go.mod:
 go.sum: go.mod
 	go mod tidy
 
-install: build
+install: $(binary)
 	go install
 
-test: fmt testfiles
+test: .fmt testfiles
 	go test -v -failfast . ./...
 
-debug: fmt testfiles
+debug: .fmt testfiles
 	go test -v -failfast -count=1 -run $(test) . ./...
 
-release: build
+release: $(binary)
 	$(gitclean)
-	@$(if $(update),gh release delete -y v$(version),)
+	gh release delete -y v$(version)
 	gh release create v$(version) --notes "v$(version)"
 
-dist: dist/$(release_binary)
-
 dist/$(release_binary): $(binary)
-	mkdir -p dist
-	cp $< $@
-
-release-upload: dist/$(release_binary)
+	$(gitclean)
 	$(call dist_upload,$<,dist/$(release_binary))
 	$(call dist_upload,$<,dist/$(dist_binary))
-	-cd dist; gh release upload $(latest_release) $(release_binary) $(CLOBBER)
+	cd dist; gh release upload $(latest_release) $(release_binary) --clobber
+	touch $@
+
+upload: dist/$(release_binary)
 
 update-modules:
 	@echo checking dependencies for updated versions 
@@ -84,7 +87,7 @@ show-vars:
 testfiles: server/testdata/BOOTX64.EFI
 
 server/testdata/BOOTX64.EFI: template/ipxe/netboot.xyz.efi.gz
-	gzcat <$< >$@
+	$(if $(openbsd),gzcat,zcat) <$< >$@
 
 run:
 	./netboot -dL- server
