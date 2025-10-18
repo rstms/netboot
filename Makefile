@@ -38,8 +38,12 @@ debug: .fmt testfiles
 
 release: $(binary)
 	$(gitclean)
-	gh release delete -y v$(version)
 	gh release create v$(version) --notes "v$(version)"
+
+update-release:
+	gh release delete -y v$(version)
+	$(MAKE) release
+
 
 dist/$(release_binary): $(binary)
 	$(gitclean)
