@@ -40,12 +40,12 @@ dist: dist/$(release_binary)
 
 dist/$(release_binary): $(binary)
 	mkdir -p dist
-	scp $< $(dist_target)/$(release_binary)
-	scp $< $(dist_target)/$(dist_binary)
 	cp $< $@
 
-release-upload: dist
-	cd dist; gh release upload $(latest_release) $(release_binary) $(CLOBBER)
+release-upload: dist/$(release_binary)
+	$(call dist_upload,$<,dist/$(release_binary))
+	$(call dist_upload,$<,dist/$(dist_binary))
+	-cd dist; gh release upload $(latest_release) $(release_binary) $(CLOBBER)
 
 update-modules:
 	@echo checking dependencies for updated versions 
@@ -73,9 +73,10 @@ sterile: clean
 	touch cmd/certs/.placeholder
 
 gen:
-	@cd template && $(MAKE) linux=$(linux) openbsd=$(openbsd) windows=$(windows)
+	@cd template && $(MAKE) gen
 
-regen: clean gen
+regen:
+	@cd template && $(MAKE) regen
 
 show-vars:
 	@$(foreach var,$(all_variables),echo $(var)=$($(var));)

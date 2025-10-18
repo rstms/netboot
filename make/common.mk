@@ -49,9 +49,14 @@ latest_module_release = $(shell gh --repo $(1) release list --json tagName --jq 
 #
 latest_release = $(call latest_module_release,$(org)/$(program))
 gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(info git status is clean))
-release_binary = $(program)-v$(version)-$(os)-$(os_version)-$(arch)$(binary_extension)
-dist_target := vega.rstms.net:rstms/dist
+
+#
+# local dist
+#
+release_binary := $(program)-v$(version)-$(os)-$(os_version)-$(arch)$(binary_extension)
 dist_binary := $(program)-latest-$(os)-$(os_version)-$(arch)$(binary_extension)
+dist_host != $(shell [ -e ~/.dist_host ] && cat ~/.dist_host)
+dist_upload = $(if $(dist_host),scp -p $(1) $(dist_host):$(2),:)
 
 #
 # configuration

@@ -6,12 +6,13 @@
 
 iso_source=$1
 iso_output=$2
+username=$3
 
 set -ueo pipefail
 
 usage() {
     cat ->&2 <<EOF
-usage: $(basename $0): SRC_ISO DST_ISO
+usage: $(basename $0): SRC_ISO DST_ISO USERNAME
 EOF
     exit 1
 }
@@ -21,7 +22,7 @@ unsupported() {
     exit 1
 }
 
-(( $# == 2 )) || usage
+(( $# == 3 )) || usage
 
 if [ ! -f $iso_source ]; then 
     echo >&2 "SRC_ISO is not a file: $iso_source"
@@ -48,14 +49,14 @@ cleanup() {
 		losetup -d /dev/loop0
 	    fi
 	    ;;
-	OpenBSD)
-	    if mount | grep -q /dev/vnd0c; then
-		umount /dev/vnd0c
-	    fi
-	    if vnconfig -l vnd0 | grep -v 'not in use'; then
-		vnconfig -u vnd0
-	    fi
-	    ;;
+#	OpenBSD)
+#	    if mount | grep -q /dev/vnd0c; then
+#		umount /dev/vnd0c
+#	    fi
+#	    if vnconfig -l vnd0 | grep -v 'not in use'; then
+#		vnconfig -u vnd0
+#	    fi
+#	    ;;
 	*) unsupported;;
     esac
     rm -rf $iso_mount
@@ -107,3 +108,5 @@ mv $efiboot/cdboot_noprompt.efi $efiboot/cdboot.efi
     -o $iso_output \
     $iso_extracted
 )
+chown ${username}:${username} $iso_output
+chmod 0600 $iso_output

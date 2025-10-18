@@ -1,3 +1,8 @@
 #!/usr/bin/env bash
+
 set -ueo pipefail
-doas $(pwd)/scripts/mkboot.windows $1 $2
+
+src_iso=$1
+dst_iso=$2
+
+doas $(pwd)/scripts/mkboot.windows $src_iso $dst_iso $USER

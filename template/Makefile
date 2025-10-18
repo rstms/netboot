@@ -2,8 +2,15 @@
 # download OS installer resources
 #
 
-bsdgen = $(if $(openbsd),$(1),@echo "skipping OpenBSD script: $(1)")
-unixgen = $(if $(windows),@echo "skipping OpenBSD script: $(1)",$(1))
+# OS detection flags
+windows = $(if $(SYSTEMROOT),1,)
+openbsd = $(if $(shell uname | grep -i openbsd),1,)
+linux = $(if $(shell uname | grep -i linux),1,)
+
+# functions for running only on selected OS
+openbsd_exec = $(if $(openbsd),$(1),@echo "not on openbsd; skipping: $(1)")
+linux_exec = $(if $(linux),$(1),@echo "not on linux; skipping: $(1)")
+windows_exec = $(if $(windows),$(1),@echo "not on windows; skipping: $(1)")
 
 debian_mirror = ftp.us.debian.org
 
@@ -39,7 +46,7 @@ alpine-3221-kernel = dist/alpine/3.22.1/x86_64/kernel
 alpine-3221-initrd = dist/alpine/3.22.1/x86_64/initrd
 alpine-3221-modloop = dist/alpine/3.22.1/x86_64/modloop
 
-custom-win11-iso = iso/customized_Win11_25H2_English_x64.iso
+customized-win11-iso = iso/customized_Win11_25H2_English_x64.iso
 win11-iso = iso/Win11_25H2_English_x64.iso
 
 dist_files = \
@@ -53,20 +60,24 @@ dist_files = \
 openbsd_netboot_iso_files = $(openbsd-75-netboot-iso) $(openbsd-76-netboot-iso) $(openbsd-77-netboot-iso)
 openbsd_netboot_img_files = $(openbsd-75-netboot-img) $(openbsd-76-netboot-img) $(openbsd-77-netboot-img)
 
-generated_files = $(openbsd_netboot_iso_files) $(openbsd_netboot_img_files)
+openbsd_generated_files = $(openbsd_netboot_iso_files) $(openbsd_netboot_img_files) 
+linux_generated_files = $(customized-win11-iso)
 
-gen: $(dist_files) $(generated_files) $(custom-win11-iso)
+generated_files = $(openbsd_generated_files) $(linux_generated_files)
+
+gen: $(dist_files) $(generated_files)
 
 regen: clean gen
-
-wingen: $(custom-win11-iso)
 
 $(win11-iso):
 	mkdir -p $(dir $@)
 	curl -L https://vega.rstms.net/pub/iso/$(notdir $@) -o $@
 
-$(custom-win11-iso): $(win11-iso)
-	$(call unixgen,scripts/generate_windows_netboot $< $@)
+dist_host != $(shell [ -e ~/.dist_host ] && cat ~/.dist_host)
+
+$(customized-win11-iso): $(win11-iso)
+	$(call linux_exec,scripts/generate_windows_netboot $< $@)
+	$(if $(dist_host),scp -p $< $(dist_host):iso/$(notdir $@),:)
 
 $(debian-12-kernel):
 	mkdir -p $(dir $@)
@@ -124,28 +135,30 @@ certs/cacerts.tgz: $(ca_certs)
 	cd certs/debian && tar zcfv ../cacerts.tgz etc
 
 $(openbsd-75-netboot-iso): $(openbsd-75-iso) $(openbsd-75-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
-	$(call bsdgen,scripts/generate_openbsd_netboot 7.5 amd64 iso)
+	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.5 amd64 iso)
 
 $(openbsd-75-netboot-img): $(openbsd-75-netboot-iso)
-	$(call bsdgen,scripts/generate_openbsd_netboot 7.5 amd64 img)
+	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.5 amd64 img)
 
 $(openbsd-76-netboot-iso): $(openbsd-76-iso) $(openbsd-76-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
-	$(call bsdgen,scripts/generate_openbsd_netboot 7.6 amd64 iso)
+	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.6 amd64 iso)
 
 $(openbsd-76-netboot-img): $(openbsd-76-netboot-iso)
-	$(call bsdgen,scripts/generate_openbsd_netboot 7.6 amd64 img)
+	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.6 amd64 img)
 
 $(openbsd-77-netboot-iso): $(openbsd-77-iso) $(openbsd-77-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
-	$(call bsdgen,scripts/generate_openbsd_netboot 7.7 amd64 iso)
+	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.7 amd64 iso)
 
 $(openbsd-77-netboot-img): $(openbsd-77-netboot-iso)
-	$(call bsdgen,scripts/generate_openbsd_netboot 7.7 amd64 img)
-
+	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.7 amd64 img)
 
 sterile: clean
+	rm -f $(generated_files)
 	find dist -type f -not -name 'gdl??.tgz' -exec rm \{\} \;
 	echo "# placeholder" >dist/README.md
 
+# only clean files that can be regenerated
 clean:
-	rm -f $(generated_files)
+	$(call openbsd_exec,rm -f $(openbsd_generated_files))
+	$(call linux_exec,rm -f $(linux_generated_files))
 
