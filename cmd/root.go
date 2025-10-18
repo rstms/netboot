@@ -38,7 +38,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Version: "1.1.9",
+	Version: "1.1.10",
 	Use:     "netboot",
 	Short:   "netboot server ",
 	Long: `
