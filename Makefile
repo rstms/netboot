@@ -47,7 +47,8 @@ update-release:
 
 dist/$(release_binary): $(binary)
 	$(gitclean)
-	$(call dist_upload,$<,dist/$(release_binary))
+	cp $< $@
+	$(call dist_upload,$<,$@)
 	$(call dist_upload,$<,dist/$(dist_binary))
 	cd dist; gh release upload $(latest_release) $(release_binary) --clobber
 	touch $@
