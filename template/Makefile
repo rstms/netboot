@@ -73,11 +73,11 @@ $(win11-iso):
 	mkdir -p $(dir $@)
 	curl -L https://vega.rstms.net/pub/iso/$(notdir $@) -o $@
 
-dist_host != $(shell [ -e ~/.dist_host ] && cat ~/.dist_host)
+dist_upload_host != $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host)
 
 $(customized-win11-iso): $(win11-iso)
 	$(call linux_exec,scripts/generate_windows_netboot $< $@)
-	$(if $(dist_host),scp -p $< $(dist_host):iso/$(notdir $@),:)
+	$(if $(dist_upload_host),scp -p $< $(dist_upload_host):iso/$(notdir $@),echo "dist_upload_host unset, skipping upload")
 
 $(debian-12-kernel):
 	mkdir -p $(dir $@)
