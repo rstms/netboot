@@ -20,7 +20,7 @@ debian-12-initrd = dist/debian/bookworm/amd64/initrd.gz
 debian-13-kernel = dist/debian/trixie/amd64/linux
 debian-13-initrd = dist/debian/trixie/amd64/initrd.gz
 
-openbsd_mirror = mirrors.mit.edu
+openbsd_mirror = ftp.openbsd.org
 
 openbsd-75-iso = dist/openbsd/7.5/amd64/cd75.iso
 openbsd-75-img = dist/openbsd/7.5/amd64/miniroot75.img
@@ -70,8 +70,7 @@ gen: $(dist_files) $(generated_files)
 regen: clean gen
 
 $(win11-iso):
-	mkdir -p $(dir $@)
-	curl -L https://vega.rstms.net/pub/iso/$(notdir $@) -o $@
+	$(call curl_download,https://vega.rstms.net/pub/iso/$(notdir $@),$@)
 
 dist_upload_host != $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host)
 
@@ -79,57 +78,49 @@ $(customized-win11-iso): $(win11-iso)
 	$(call linux_exec,scripts/generate_windows_netboot $< $@)
 	$(if $(dist_upload_host),scp -p $< $(dist_upload_host):iso/$(notdir $@),echo "dist_upload_host unset, skipping upload")
 
+curl_download = \
+	mkdir -p $(dir $(2)) && \
+	curl -L $(1) -o $(2) && \
+	test "$$(stat -f %z $(2))" -gt "0"
+
 $(debian-12-kernel):
-	mkdir -p $(dir $@)
-	curl -L http://$(debian_mirror)/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux -o $@
+	$(call curl_download,http://$(debian_mirror)/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux,$@)
 
 $(debian-12-initrd):
-	mkdir -p $(dir $@)
-	curl -L http://$(debian_mirror)/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz -o $@
+	$(call curl_download,http://$(debian_mirror)/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz,$@)
 
 $(debian-13-kernel):
-	mkdir -p $(dir $@)
-	curl -L http://$(debian_mirror)/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux -o $@
+	$(call curl_download,http://$(debian_mirror)/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux,$@)
 
 $(debian-13-initrd):
-	mkdir -p $(dir $@)
-	curl -L http://$(debian_mirror)/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz -o $@
+	$(call curl_download,http://$(debian_mirror)/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz,$@)
 
 $(openbsd-75-iso):
-	mkdir -p $(dir $@)
-	curl -L https://$(openbsd_mirror)/pub/OpenBSD/7.5/amd64/cd75.iso -o $@
+	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.5/amd64/cd75.iso,$@)
 
 $(openbsd-75-img):
-	mkdir -p $(dir $@)
-	curl -L https://$(openbsd_mirror)/pub/OpenBSD/7.5/amd64/miniroot75.img -o $@
+	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.5/amd64/miniroot75.img,$@)
 
 $(openbsd-76-iso):
-	mkdir -p $(dir $@)
-	curl -L https://$(openbsd_mirror)/pub/OpenBSD/7.6/amd64/cd76.iso -o $@
+	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.6/amd64/cd76.iso,$@)
 
 $(openbsd-76-img):
-	mkdir -p $(dir $@)
-	curl -L https://$(openbsd_mirror)/pub/OpenBSD/7.6/amd64/miniroot76.img -o $@
+	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.6/amd64/miniroot76.img,$@)
 
 $(openbsd-77-iso):
-	mkdir -p $(dir $@)
-	curl -L https://$(openbsd_mirror)/pub/OpenBSD/7.7/amd64/cd77.iso -o $@
+	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.7/amd64/cd77.iso,$@)
 
 $(openbsd-77-img):
-	mkdir -p $(dir $@)
-	curl -L https://$(openbsd_mirror)/pub/OpenBSD/7.7/amd64/miniroot77.img -o $@
+	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.7/amd64/miniroot77.img,$@)
 
 $(alpine-3221-kernel):
-	mkdir -p $(dir $@)
-	curl -L https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/vmlinuz-virt -o $@
+	$(call curl_download,https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/vmlinuz-virt,$@)
 
 $(alpine-3221-initrd):
-	mkdir -p $(dir $@)
-	curl -L https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/initramfs-virt -o $@
+	$(call curl_download,https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/initramfs-virt,$@)
 
 $(alpine-3221-modloop):
-	mkdir -p $(dir $@)
-	curl -L https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/modloop-virt -o $@
+	$(call curl_download,https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/modloop-virt,$@)
 
 certs/cacerts.tgz: $(ca_certs)
 	cd certs/debian && tar zcfv ../cacerts.tgz etc
@@ -154,11 +145,13 @@ $(openbsd-77-netboot-img): $(openbsd-77-netboot-iso)
 
 sterile: clean
 	rm -f $(generated_files)
+
+distclean:
 	find dist -type f -not -name 'gdl??.tgz' -exec rm \{\} \;
 	echo "# placeholder" >dist/README.md
 
 # only clean files that can be regenerated
-clean:
+clean: distclean
 	$(call openbsd_exec,rm -f $(openbsd_generated_files))
 	$(call linux_exec,rm -f $(linux_generated_files))
 
