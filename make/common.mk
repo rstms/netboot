@@ -56,7 +56,7 @@ gitclean = $(if $(shell git status --porcelain),$(error git status is dirty),$(i
 release_binary := $(program)-v$(version)-$(os)-$(os_version)-$(arch)$(binary_extension)
 dist_binary := $(program)-latest-$(os)-$(os_version)-$(arch)$(binary_extension)
 dist_upload_host ?= $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host)
-dist_upload = $(if $(dist_upload_host),scp -p $(1) $(dist_upload_host):$(2),@echo "not uploading; dist_upload_host unset")
+dist_upload = $(if $(dist_upload_host),scp -p $(1) $(dist_upload_host):$(2),@echo "dist_upload_host unset, not uploading $(2)")
 
 #
 # configuration
