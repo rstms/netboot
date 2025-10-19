@@ -47,6 +47,7 @@ update-release:
 
 dist/$(release_binary): $(binary)
 	$(gitclean)
+	mkdir -p $(dir $@)
 	cp $< $@
 	$(call dist_upload,$<,$@)
 	$(call dist_upload,$<,dist/$(dist_binary))
