@@ -15,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -82,18 +83,19 @@ const htmlSuffix = `
 `
 
 type HostCache struct {
-	Name         string
-	cacheDir     string
-	ipxeDir      string
-	distDir      string
-	cache        map[string]string
-	httpPort     int
-	httpsPort    int
-	proxy        bool
-	noDeleteIpxe bool
-	mirrorUrl    map[string]string
-	httpURL      string
-	httpsURL     string
+	Name             string
+	cacheDir         string
+	ipxeDir          string
+	distDir          string
+	cache            map[string]string
+	httpPort         int
+	httpsPort        int
+	proxy            bool
+	noDeleteIpxe     bool
+	mirrorUrl        map[string]string
+	httpURL          string
+	httpsURL         string
+	whitelistCommand string
 }
 
 func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*HostCache, error) {
@@ -124,8 +126,9 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 			"debian-security": ViperGetString(prefix + "mirror.debian-security"),
 			"openbsd":         ViperGetString(prefix + "mirror.openbsd"),
 		},
-		httpURL:  ViperGetString(prefix + "http_url"),
-		httpsURL: ViperGetString(prefix + "https_url"),
+		httpURL:          ViperGetString(prefix + "http_url"),
+		httpsURL:         ViperGetString(prefix + "https_url"),
+		whitelistCommand: ViperGetString(prefix + "whitelist_command"),
 	}
 	if !IsDir(c.ipxeDir) {
 		err := os.MkdirAll(c.ipxeDir, 0700)
@@ -950,4 +953,46 @@ func (c *HostCache) ShutdownHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	}
 	c.respond(w, "ShutdownRequestReponse", Response{Message: "shutdown request acknowleged"})
 	InternalShutdownRequest <- struct{}{}
+}
+
+func (c *HostCache) AddWhitelistAddressHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	if c.whitelistCommand == "" {
+		c.respond(w, "WhitelistAddressResponse", Response{Message: "not configured"})
+		return
+	}
+	ip := r.PathValue("ip")
+	cmd := exec.Command("sh", "-c", c.whitelistCommand+" "+"add "+ip)
+	data, err := cmd.Output()
+	if err != nil {
+		log.Printf("whitelist command: %v\n", cmd)
+		log.Printf("failed: %v\n", err)
+		c.fail(w, "failed (see netboot log for detail)", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Whitelist add: %s\n%s\n", ip, string(data))
+	c.respond(w, "WhitelistAddressResponse", Response{Message: "whitelisted: " + ip})
+}
+
+func (c *HostCache) DeleteWhitelistAddressHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	if c.whitelistCommand == "" {
+		c.respond(w, "WhitelistAddressResponse", Response{Message: "not configured"})
+		return
+	}
+	ip := r.PathValue("ip")
+	cmd := exec.Command("sh", "-c", c.whitelistCommand+" "+"delete "+ip)
+	data, err := cmd.Output()
+	if err != nil {
+		log.Printf("whitelist command: %v\n", cmd)
+		log.Printf("failed: %v\n", err)
+		c.fail(w, "failed (see netboot log for detail)", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Whitelist delete: %s\n%s\n", ip, string(data))
+	c.respond(w, "WhitelistAddressResponse", Response{Message: "deleted: " + ip})
 }

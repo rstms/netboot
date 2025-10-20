@@ -172,6 +172,8 @@ func (s *NetbootServer) Start() error {
 	httpsMux.HandleFunc("GET /api/booted/{mac}/{ip}/", s.hosts.HostBootedHandlerTLS)
 	httpsMux.HandleFunc("GET /api/address/", s.hosts.HostAddressQueryHandlerTLS)
 	httpsMux.HandleFunc("PUT /api/host/", s.hosts.AddHostHandlerTLS)
+	httpsMux.HandleFunc("PUT /api/whitelist/{ip}/", s.hosts.AddWhitelistAddressHandlerTLS)
+	httpsMux.HandleFunc("DELETE /api/whitelist/{ip}/", s.hosts.DeleteWhitelistAddressHandlerTLS)
 	httpsMux.HandleFunc("DELETE /api/host/", s.hosts.DeleteHostHandlerTLS)
 	httpsMux.HandleFunc("POST /api/tarball/", s.hosts.UploadPackageHandlerTLS)
 	httpsMux.HandleFunc("POST /api/shutdown/", s.hosts.ShutdownHandlerTLS)
