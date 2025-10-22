@@ -167,6 +167,7 @@ func (s *NetbootServer) Start() error {
 	httpsMux.HandleFunc("GET /utc", s.hosts.UTCHandlerTLS)
 	httpsMux.HandleFunc("GET /gdl/{version}/{arch}/{file}", s.hosts.GDLHandlerTLS)
 	httpsMux.HandleFunc("GET /ipxe/", s.hosts.IPXEHandlerTLS)
+	httpsMux.HandleFunc("GET /iso/netboot.iso", s.hosts.ISOHandlerTLS)
 	httpsMux.HandleFunc("GET /netboot.png", s.hosts.PNGHandlerTLS)
 	httpsMux.HandleFunc("GET /api/hosts/", s.hosts.ListHostsHandlerTLS)
 	httpsMux.HandleFunc("GET /api/booted/{mac}/{ip}/", s.hosts.HostBootedHandlerTLS)

@@ -393,6 +393,26 @@ func (c *HostCache) PNGHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	http.ServeFileFS(w, r, template.Ipxe, "/ipxe/netboot.png")
 }
 
+func (c *HostCache) ISOHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.validateHttpRequest(w, r) {
+		return
+	}
+	if r.URL.Path != "iso/netboot.iso" {
+		c.fail(w, "invalid path", http.StatusBadRequest)
+		return
+
+	}
+	netbootIso := filepath.Join(c.ipxeDir, "netboot.iso")
+	if !IsFile(netbootIso) {
+		err := files.UnzipFileFromFS(netbootIso, filepath.Join("ipxe", "netboot.xyz.iso.gz"), template.Ipxe)
+		if err != nil {
+			c.fail(w, "invalid path", http.StatusInternalServerError)
+			return
+		}
+	}
+	http.ServeFile(w, r, netbootIso)
+}
+
 func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if !c.requireClientCert(w, r) {
 		return
