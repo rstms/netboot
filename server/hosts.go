@@ -34,9 +34,10 @@ type Host struct {
 	Address string `json:"address"`
 }
 
-type HostAddressResponse struct {
-	MAC string `json:"mac"`
-	IP  string `json:"ip"`
+type HostState struct {
+	MAC   string `json:"mac"`
+	IP    string `json:"ip"`
+	State string `json:"state"`
 }
 
 type Response struct {
@@ -87,7 +88,7 @@ type HostCache struct {
 	cacheDir         string
 	ipxeDir          string
 	distDir          string
-	cache            map[string]string
+	cache            map[string]HostState
 	httpPort         int
 	httpsPort        int
 	proxy            bool
@@ -117,7 +118,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		httpPort:     httpPort,
 		httpsPort:    httpsPort,
 		proxy:        proxyEnabled,
-		cache:        make(map[string]string),
+		cache:        make(map[string]HostState),
 		ipxeDir:      filepath.Join(dir, "ipxe"),
 		distDir:      filepath.Join(dir, "dist"),
 		noDeleteIpxe: ViperGetBool(prefix + "no_delete_ipxe"),
@@ -623,7 +624,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	log.Printf("adding host %s %s %s\n", config.Address, config.OS, config.Version)
 
 	log.Printf("AddHostHandler setting MAC=%s IP=''\n", config.Address)
-	c.cache[config.Address] = ""
+	c.cache[config.Address] = HostState{MAC: config.Address, State: "init"}
 
 	distNames, err := template.DistNames()
 	if err != nil {
@@ -793,7 +794,7 @@ func (c *HostCache) DeleteHostHandlerTLS(w http.ResponseWriter, r *http.Request)
 	}
 	macAddr := normalizeMAC(request.Address)
 	log.Printf("DeleteHostHandler setting MAC=%s IP=''\n", macAddr)
-	c.cache[request.Address] = ""
+	delete(c.cache, request.Address)
 	c.deleteAddressFiles(macAddr, w)
 }
 
@@ -832,10 +833,28 @@ func (c *HostCache) HostBootedHandlerTLS(w http.ResponseWriter, r *http.Request)
 	case address == "":
 	case ip == "":
 	default:
-		log.Printf("HostBootedHandler setting MAC=%s IP=%s\n", address, ip)
-		c.cache[address] = ip
+		log.Printf("HostBootedHandler setting MAC=%s IP=%s State=booted\n", address, ip)
+		c.cache[address] = HostState{MAC: address, IP: ip, State: "booted"}
 		c.deleteAddressFiles(address, w)
-		c.respond(w, "BootReportResponse", Response{Message: "boot acknowleded"})
+		c.respond(w, "BootReportResponse", Response{Message: "firstboot acknowleded"})
+		return
+	}
+	c.fail(w, "invalid path", http.StatusBadRequest)
+}
+
+func (c *HostCache) HostInstalledHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	address := normalizeMAC(r.PathValue("mac"))
+	ip := r.PathValue("ip")
+	switch {
+	case address == "":
+	case ip == "":
+	default:
+		log.Printf("HostInstalledHandler setting MAC=%s IP=%s State=installed\n", address, ip)
+		c.cache[address] = HostState{MAC: address, IP: ip, State: "installed"}
+		c.respond(w, "BootReportResponse", Response{Message: "install acknowleded"})
 		return
 	}
 	c.fail(w, "invalid path", http.StatusBadRequest)
@@ -848,8 +867,13 @@ func (c *HostCache) HostAddressQueryHandlerTLS(w http.ResponseWriter, r *http.Re
 	segments := strings.Split(r.URL.Path, "/")
 	if len(segments) > 3 {
 		address := segments[3]
-		log.Printf("HostAddressQueryHandler returning MAC=%s IP=%s\n", address, c.cache[address])
-		c.respond(w, "HostAddressResponse", HostAddressResponse{MAC: address, IP: c.cache[address]})
+		var hostState HostState
+		hostState, ok := c.cache[address]
+		if !ok {
+			hostState = HostState{MAC: address}
+		}
+		log.Printf("HostAddressQueryHandler returning: %s\n", FormatJSON(hostState))
+		c.respond(w, "HostAddressResponse", hostState)
 		return
 	}
 	c.fail(w, "invalid path", http.StatusBadRequest)
