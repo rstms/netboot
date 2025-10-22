@@ -96,6 +96,7 @@ type HostCache struct {
 	httpURL          string
 	httpsURL         string
 	whitelistCommand string
+	isoKeys          map[string]string
 }
 
 func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*HostCache, error) {
@@ -129,6 +130,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		httpURL:          ViperGetString(prefix + "http_url"),
 		httpsURL:         ViperGetString(prefix + "https_url"),
 		whitelistCommand: ViperGetString(prefix + "whitelist_command"),
+		isoKeys:          make(map[string]string),
 	}
 	if !IsDir(c.ipxeDir) {
 		err := os.MkdirAll(c.ipxeDir, 0700)
@@ -379,7 +381,7 @@ func (c *HostCache) SanBootHandler(w http.ResponseWriter, r *http.Request) {
 		// IPXE sanboot command from the OpenBSD autoexec.ipxe
 		// FIXME: verify that this request follows a very recent client-cert validated request for MAC.iso from the same source
 		// it is possible that the ipxe client will be reusing the same session - see if we can set a cookie and check for it
-		http.ServeFile(w, r, filepath.Join(c.cacheDir, "ipxe", mac+"."+ext))
+		http.ServeFile(w, r, filepath.Join(c.ipxeDir, mac+"."+ext))
 		return
 	}
 	Warning("unexpected sanboot request: %s", r.URL.Path)
@@ -397,18 +399,27 @@ func (c *HostCache) ISOHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if !c.validateHttpRequest(w, r) {
 		return
 	}
-	if r.URL.Path != "/iso/netboot.iso" {
+	isoKey := r.PathValue("key")
+	mac, ok := c.isoKeys[isoKey]
+	if !ok {
+		Warning("unauthorized iso request: %+v", r)
+		c.fail(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	isoFile := mac + ".iso"
+	_, requestFile := path.Split(r.URL.Path)
+	if requestFile != isoFile {
+		Warning("unexpected iso request file: %s", requestFile)
 		c.fail(w, "invalid path", http.StatusBadRequest)
 		return
 
 	}
-	netbootIso := filepath.Join(c.ipxeDir, "netboot.iso")
+	netbootIso := filepath.Join(c.ipxeDir, isoFile)
 	if !IsFile(netbootIso) {
-		err := files.UnzipFileFromFS(netbootIso, filepath.Join("ipxe", "netboot.xyz.iso.gz"), template.Ipxe)
-		if err != nil {
-			c.fail(w, "invalid path", http.StatusInternalServerError)
-			return
-		}
+		Warning("iso request file not found: %s", netbootIso)
+		c.fail(w, "not found", http.StatusNotFound)
+		return
 	}
 	http.ServeFile(w, r, netbootIso)
 }
@@ -423,7 +434,7 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	}
 	switch ext {
 	case "iso", "img", "sh", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "postinstall", "netboot":
-		http.ServeFile(w, r, filepath.Join(c.cacheDir, "ipxe", mac+"."+ext))
+		http.ServeFile(w, r, filepath.Join(c.ipxeDir, mac+"."+ext))
 		return
 	}
 	Warning("unexpected ipxe request: %s", r.URL.Path)
@@ -1015,4 +1026,31 @@ func (c *HostCache) DeleteWhitelistAddressHandlerTLS(w http.ResponseWriter, r *h
 	}
 	log.Printf("Whitelist delete: %s\n%s\n", ip, string(data))
 	c.respond(w, "WhitelistAddressResponse", Response{Message: "deleted: " + ip})
+}
+
+func (c *HostCache) AddIsoKeyHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	key := r.PathValue("key")
+	mac := normalizeMAC(r.PathValue("mac"))
+	c.isoKeys[key] = mac
+	log.Printf("Added ISOkey[%s]=%s\n", key, mac)
+	c.respond(w, "iso key added", Response{Message: "key added"})
+}
+
+func (c *HostCache) DeleteIsoKeyHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	key := r.PathValue("key")
+	_, ok := c.isoKeys[key]
+	if !ok {
+		c.respond(w, "nonexistent key", Response{Message: "key not present"})
+		return
+	}
+	if ok {
+		delete(c.isoKeys, key)
+	}
+	c.respond(w, "key deleted", Response{Message: "key deleted"})
 }
