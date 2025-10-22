@@ -55,4 +55,9 @@ if [ $postinstall_exit != 0 ]; then
     sleep 5
 fi
 
-/sbin/reboot
+if [ "${_shutdown }" = "1" ]; then
+    poweroff
+else
+    /sbin/reboot
+fi
+

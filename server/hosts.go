@@ -949,6 +949,11 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	} else {
 		netbootEnv += "_quiet=\n"
 	}
+	if config.Shutdown {
+		netbootEnv += "_shutdown=1\n"
+	} else {
+		netbootEnv += "_shutdown=\n"
+	}
 	netbootEnv += fmt.Sprintf("_gdl_url='%s/gdl/%s/%s/gdl.tgz'\n", url, config.Version, config.Arch)
 	err = os.WriteFile(netbootEnvFile, []byte(netbootEnv), 0644)
 	if err != nil {

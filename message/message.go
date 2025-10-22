@@ -13,4 +13,5 @@ type NetbootConfig struct {
 	KernelParams      string `json:"kernel_params"`
 	Debug             bool   `json:"debug"`
 	Quiet             bool   `json:"quiet"`
+	Shutdown          bool   `json:"shutdown"`
 }
