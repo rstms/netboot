@@ -397,7 +397,7 @@ func (c *HostCache) ISOHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if !c.validateHttpRequest(w, r) {
 		return
 	}
-	if r.URL.Path != "iso/netboot.iso" {
+	if r.URL.Path != "/iso/netboot.iso" {
 		c.fail(w, "invalid path", http.StatusBadRequest)
 		return
 
