@@ -67,6 +67,8 @@ var TARBALL_PATTERN = regexp.MustCompile(`^([0-9a-f]{12})\.tgz$`)
 var ALPINE_VERSION_PATTERN = regexp.MustCompile(`([0-9][0-9]*)\.([0-9][0-9]*)\.([0-9][0-9]*)$`)
 var APKOVL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa-f]{2})\.apkovl\.tar\.gz$`)
 
+var MAC_ISO_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa-f]{2})\.iso$`)
+
 const htmlPrefix = `
 <!DOCTYPE html>
 <html lang="en">
@@ -397,9 +399,7 @@ func (c *HostCache) PNGHandlerTLS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *HostCache) ISOHandlerTLS(w http.ResponseWriter, r *http.Request) {
-	if !c.validateHttpRequest(w, r) {
-		return
-	}
+	c.optionalClientCert(w, r)
 	isoKey := r.PathValue("key")
 	mac, ok := c.isoKeys[isoKey]
 	if !ok {
@@ -408,15 +408,30 @@ func (c *HostCache) ISOHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// generate a filename from the isoKey mac address
 	isoFile := mac + ".iso"
-	_, requestFile := path.Split(r.URL.Path)
-	if requestFile != isoFile {
-		Warning("unexpected iso request file: %s", requestFile)
+	if !MAC_ISO_PATTERN.MatchString(isoFile) {
+		Warning("unexpected isoKey generated file: %s", isoFile)
 		c.fail(w, "invalid path", http.StatusBadRequest)
 		return
-
 	}
+
+	// verify the file requested matches the isoKey lookup value
+	_, requestFile := path.Split(r.URL.Path)
+	if isoFile != requestFile {
+		Warning("unexpected iso request file: %s", requestFile)
+		c.fail(w, "path mismatch", http.StatusBadRequest)
+		return
+	}
+
 	netbootIso := filepath.Join(c.ipxeDir, isoFile)
+
+	// for openbsd, return the MAC.boot ISO file
+	bootFile := filepath.Join(c.ipxeDir, mac+".boot")
+	if IsFile(bootFile) {
+		netbootIso = bootFile
+	}
+
 	if !IsFile(netbootIso) {
 		Warning("iso request file not found: %s", netbootIso)
 		c.fail(w, "not found", http.StatusNotFound)
