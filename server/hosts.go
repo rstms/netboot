@@ -843,9 +843,7 @@ func (c *HostCache) HostBootedHandlerTLS(w http.ResponseWriter, r *http.Request)
 }
 
 func (c *HostCache) HostInstalledHandlerTLS(w http.ResponseWriter, r *http.Request) {
-	if !c.requireClientCert(w, r) {
-		return
-	}
+	c.optionalClientCert(w, r)
 	address := normalizeMAC(r.PathValue("mac"))
 	ip := r.PathValue("ip")
 	switch {
