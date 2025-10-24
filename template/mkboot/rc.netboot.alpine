@@ -16,11 +16,11 @@ console_prompt() {
 }
 
 mkdir /cdrom
-echo "Attempting /dev/cdrom ISO9660 mount..."
+echo >/dev/console "Attempting /dev/cdrom ISO9660 mount..."
 if mount -t iso9660 -o ro /dev/cdrom /cdrom ; then
     mount | grep /cdrom
 else
-    echo "CDROM mount failed, trying /dev/sda as FAT filesystem..."
+    echo >/dev/console "CDROM mount failed, trying /dev/sda as FAT filesystem..."
     apk add mtools
     if minfo -i /dev/sda | grep SYSLINUX; then
 	mcopy -i /dev/sda ::keymaster.pem /cdrom
@@ -30,9 +30,6 @@ else
 	mcopy -i /dev/sda ::netboot.env /cdrom
     fi
 fi
-
-ls /dev
-console_prompt
 
 . /cdrom/netboot.env
 
@@ -50,12 +47,12 @@ sh /postinstall
 postinstall_exit=$?
 
 if [ $postinstall_exit != 0 ]; then
-    echo "rc.netboot: /postinstall failed with exit code $postinstall_exit"
-    echo "rebooting in 5 seconds..."
+    echo >/dev/console "rc.netboot: /postinstall failed with exit code $postinstall_exit"
+    echo >/dev/console "rebooting in 5 seconds..."
     sleep 5
 fi
 
-if [ "${_shutdown }" = "1" ]; then
+if [ -n "$_shutdown" ]; then
     /sbin/poweroff
 else
     /sbin/reboot
