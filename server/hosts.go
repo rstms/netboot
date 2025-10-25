@@ -29,6 +29,8 @@ const DEFAULT_DEBIAN_MIRROR = "http://ftp.us.debian.org"
 const DEFAULT_DEBIAN_SECURITY_MIRROR = "http://security.debian.org"
 const DEFAULT_OPENBSD_MIRROR = "http://mirrors.mit.edu"
 const DEFAULT_ALPINE_MIRROR = "https://dl-cdn.alpinelinux.org"
+const DEFAULT_ISO_KEY_LIFETIME = 60
+const DEFAULT_WHITELIST_LIFETIME = 60
 
 type Host struct {
 	Address string `json:"address"`
@@ -86,20 +88,22 @@ const htmlSuffix = `
 `
 
 type HostCache struct {
-	Name             string
-	cacheDir         string
-	ipxeDir          string
-	distDir          string
-	cache            map[string]HostState
-	httpPort         int
-	httpsPort        int
-	proxy            bool
-	noDeleteIpxe     bool
-	mirrorUrl        map[string]string
-	httpURL          string
-	httpsURL         string
-	whitelistCommand string
-	isoKeys          map[string]string
+	Name              string
+	cacheDir          string
+	ipxeDir           string
+	distDir           string
+	cache             map[string]HostState
+	httpPort          int
+	httpsPort         int
+	proxy             bool
+	noDeleteIpxe      bool
+	mirrorUrl         map[string]string
+	httpURL           string
+	httpsURL          string
+	whitelistCommand  string
+	isoKeys           map[string]string
+	isoKeyLifetime    int
+	whitelistLifetime int
 }
 
 func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*HostCache, error) {
@@ -113,6 +117,8 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 	ViperSetDefault(prefix+"mirror.debian", DEFAULT_DEBIAN_MIRROR)
 	ViperSetDefault(prefix+"mirror.debian-security", DEFAULT_DEBIAN_SECURITY_MIRROR)
 	ViperSetDefault(prefix+"mirror.openbsd", DEFAULT_OPENBSD_MIRROR)
+	ViperSetDefault(prefix+"iso_key_lifetime", DEFAULT_ISO_KEY_LIFETIME)
+	ViperSetDefault(prefix+"whitelist_lifetime", DEFAULT_WHITELIST_LIFETIME)
 
 	c := HostCache{
 		Name:         "netboot",
@@ -130,10 +136,12 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 			"debian-security": ViperGetString(prefix + "mirror.debian-security"),
 			"openbsd":         ViperGetString(prefix + "mirror.openbsd"),
 		},
-		httpURL:          ViperGetString(prefix + "http_url"),
-		httpsURL:         ViperGetString(prefix + "https_url"),
-		whitelistCommand: ViperGetString(prefix + "whitelist_command"),
-		isoKeys:          make(map[string]string),
+		httpURL:           ViperGetString(prefix + "http_url"),
+		httpsURL:          ViperGetString(prefix + "https_url"),
+		whitelistCommand:  ViperGetString(prefix + "whitelist_command"),
+		whitelistLifetime: ViperGetInt(prefix + "whitelist_lifetime"),
+		isoKeys:           make(map[string]string),
+		isoKeyLifetime:    ViperGetInt(prefix + "iso_key_lifetime"),
 	}
 	if !IsDir(c.ipxeDir) {
 		err := os.MkdirAll(c.ipxeDir, 0700)
@@ -1048,6 +1056,12 @@ func (c *HostCache) AddWhitelistAddressHandlerTLS(w http.ResponseWriter, r *http
 		return
 	}
 	log.Printf("Whitelist add: %s\n%s\n", ip, string(data))
+	go func() {
+		timeout := time.NewTimer(time.Duration(uint64(c.whitelistLifetime)) * time.Second)
+		<-timeout.C
+		msg, _ := c.deleteWhitelist(ip)
+		log.Printf("whitelist expired: %s\n", msg)
+	}()
 	c.respond(w, "WhitelistAddressResponse", Response{Message: "whitelisted: " + ip})
 }
 
@@ -1060,16 +1074,23 @@ func (c *HostCache) DeleteWhitelistAddressHandlerTLS(w http.ResponseWriter, r *h
 		return
 	}
 	ip := r.PathValue("ip")
-	cmd := exec.Command("sh", "-c", c.whitelistCommand+" "+"delete "+ip)
-	data, err := cmd.Output()
-	if err != nil {
-		log.Printf("whitelist command: %v\n", cmd)
-		log.Printf("failed: %v\n", err)
-		c.fail(w, "failed (see netboot log for detail)", http.StatusInternalServerError)
+	msg, ok := c.deleteWhitelist(ip)
+	if !ok {
+		c.fail(w, msg, http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Whitelist delete: %s\n%s\n", ip, string(data))
-	c.respond(w, "WhitelistAddressResponse", Response{Message: "deleted: " + ip})
+	c.respond(w, "WhitelistAddressResponse", Response{Message: msg})
+}
+
+func (c *HostCache) deleteWhitelist(ipaddr string) (string, bool) {
+	cmd := exec.Command("sh", "-c", c.whitelistCommand+" "+"delete "+ipaddr)
+	data, err := cmd.Output()
+	log.Printf("Whitelist delete: %v\n%s\n", cmd, string(data))
+	if err != nil {
+		log.Printf("failed: %v\n", err)
+		return "failed (see log for detail)", false
+	}
+	return "deleted: " + ipaddr, true
 }
 
 func (c *HostCache) AddIsoKeyHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -1079,6 +1100,14 @@ func (c *HostCache) AddIsoKeyHandlerTLS(w http.ResponseWriter, r *http.Request) 
 	key := r.PathValue("key")
 	mac := normalizeMAC(r.PathValue("mac"))
 	c.isoKeys[key] = mac
+	go func() {
+		timeout := time.NewTimer(time.Duration(uint64(c.isoKeyLifetime)) * time.Second)
+		<-timeout.C
+		_, ok := c.deleteIsoKey(key)
+		if ok {
+			log.Printf("auto deleted ISOKey[%s]\n", key)
+		}
+	}()
 	log.Printf("Added ISOkey[%s]=%s\n", key, mac)
 	c.respond(w, "iso key added", Response{Message: "key added"})
 }
@@ -1088,13 +1117,18 @@ func (c *HostCache) DeleteIsoKeyHandlerTLS(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	key := r.PathValue("key")
+	msg, ok := c.deleteIsoKey(key)
+	if !ok {
+		c.respond(w, msg, Response{Message: msg})
+	}
+	c.respond(w, msg, Response{Message: msg})
+}
+
+func (c *HostCache) deleteIsoKey(key string) (string, bool) {
 	_, ok := c.isoKeys[key]
 	if !ok {
-		c.respond(w, "nonexistent key", Response{Message: "key not present"})
-		return
+		return "key not present", false
 	}
-	if ok {
-		delete(c.isoKeys, key)
-	}
-	c.respond(w, "key deleted", Response{Message: "key deleted"})
+	delete(c.isoKeys, key)
+	return "key deleted", true
 }
