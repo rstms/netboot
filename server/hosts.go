@@ -426,11 +426,13 @@ func (c *HostCache) ISOHandlerTLS(w http.ResponseWriter, r *http.Request) {
 
 	netbootIso := filepath.Join(c.ipxeDir, isoFile)
 
-	// for openbsd, return the MAC.boot ISO file
-	bootFile := filepath.Join(c.ipxeDir, mac+".boot")
-	if IsFile(bootFile) {
-		netbootIso = bootFile
-	}
+	/*
+		// for openbsd, return the MAC.boot ISO file
+		bootFile := filepath.Join(c.ipxeDir, mac+".boot")
+		if IsFile(bootFile) {
+			netbootIso = bootFile
+		}
+	*/
 
 	if !IsFile(netbootIso) {
 		Warning("iso request file not found: %s", netbootIso)
