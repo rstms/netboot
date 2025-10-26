@@ -58,7 +58,7 @@ func (m *MkBoot) Generate() (string, error) {
 			return "", Fatal(err)
 		}
 	case "alpine":
-		err := m.mkbootAlpine()
+		err := m.mkbootAlpine(false)
 		if err != nil {
 			return "", Fatal(err)
 		}
@@ -70,6 +70,14 @@ func (m *MkBoot) Generate() (string, error) {
 	default:
 		return "", Fatalf("unexpected OS: '%s'", m.Config.OS)
 	}
+
+	if m.Config.ImageLoader {
+		err := m.mkbootAlpine(true)
+		if err != nil {
+			return "", Fatal(err)
+		}
+	}
+
 	return m.ISO, nil
 }
 
@@ -189,7 +197,7 @@ func (m *MkBoot) mkbootDebian() error {
 	return nil
 }
 
-func (m *MkBoot) mkbootAlpine() error {
+func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 
 	log.Printf("mkbootAlpine: %s %s\n", m.Config.Version, m.Config.Arch)
 
@@ -241,6 +249,16 @@ func (m *MkBoot) mkbootAlpine() error {
 	err = files.CopyFile(dstPostinstall, srcPostinstall)
 	if err != nil {
 		return Fatal(err)
+	}
+
+	if imageLoader {
+		srcPreinstall := filepath.Join(m.TempDir, "preinstall")
+		dstPreinstall := filepath.Join(m.IpxeDir, m.Config.Address+".preinstall")
+		log.Printf("mkbootAlpine: preinstall=%s\n", dstPreinstall)
+		err = files.CopyFile(dstPreinstall, srcPreinstall)
+		if err != nil {
+			return Fatal(err)
+		}
 	}
 
 	// generate overlay tarball
@@ -334,10 +352,15 @@ func (m *MkBoot) mkbootAlpine() error {
 		return Fatal(err)
 	}
 
-	err = m.buildIMG()
-	if err != nil {
-		return Fatal(err)
+	// if imageLoader is set, we are using the alpine installer to write the
+	// actual OS IMG file, so don't write the alpine one
+	if !imageLoader {
+		err = m.buildIMG()
+		if err != nil {
+			return Fatal(err)
+		}
 	}
+
 	err = m.buildISO()
 	if err != nil {
 		return Fatal(err)

@@ -459,7 +459,7 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch ext {
-	case "iso", "img", "sh", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "postinstall", "netboot":
+	case "iso", "img", "sh", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "preinstall", "postinstall", "netboot":
 		http.ServeFile(w, r, filepath.Join(c.ipxeDir, mac+"."+ext))
 		return
 	}
@@ -1014,6 +1014,14 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	err = files.ExtractTarballFile(postinstall, "postinstall", tarball)
 	if err != nil {
 		return "", []string{}, Fatal(err)
+	}
+
+	if config.ImageLoader {
+		preinstall := filepath.Join(tempDir, "preinstall")
+		err = files.ExtractTarballFile(preinstall, "preinstall", tarball)
+		if err != nil {
+			return "", []string{}, Fatal(err)
+		}
 	}
 
 	mkboot := NewMkBoot(tempDir, c.ipxeDir, url, &bootFiles, config)
