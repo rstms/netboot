@@ -12,8 +12,16 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 )
+
+var VERSION_PATTERN = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)$`)
+
+const GENERATE_IMAGE = true
+const NO_GENERATE_IMAGE = false
 
 type MkBoot struct {
 	TempDir   string
@@ -46,6 +54,7 @@ func (m *MkBoot) Generate() (string, error) {
 		}
 	}
 	log.Printf("Mkboot.Generate: %s\n", FormatJSON(m))
+
 	switch strings.ToLower(m.Config.OS) {
 	case "openbsd":
 		err := m.mkbootOpenBSD()
@@ -71,7 +80,7 @@ func (m *MkBoot) Generate() (string, error) {
 		return "", Fatalf("unexpected OS: '%s'", m.Config.OS)
 	}
 
-	if m.Config.ImageLoader {
+	if m.Config.AlpineLoader {
 		err := m.mkbootAlpine(true)
 		if err != nil {
 			return "", Fatal(err)
@@ -81,20 +90,66 @@ func (m *MkBoot) Generate() (string, error) {
 	return m.ISO, nil
 }
 
-func (m *MkBoot) checkDistDir() (string, error) {
+func (m *MkBoot) checkDistDir(os, version, arch string) (string, error) {
 	// generate error if version/arch not present
-	distDir := filepath.Join("dist", m.Config.OS, m.Config.Version, m.Config.Arch)
+	distDir := filepath.Join("dist", os, version, arch)
 	log.Printf("checking distDir: %s\n", distDir)
 	if !files.IsDirFS(template.Dist, distDir) {
-		return "", Fatalf("unsupported: %s %s %s", m.Config.OS, m.Config.Version, m.Config.Arch)
+		return "", Fatalf("unsupported: %s %s %s", os, version, arch)
 	}
 	return distDir, nil
+}
+
+func (m *MkBoot) defaultDist(os string) (string, string, error) {
+	distDir := path.Join("dist", os)
+	versionEntries, err := fs.ReadDir(template.Dist, distDir)
+	if err != nil {
+		return "", "", Fatal(err)
+	}
+	vmap := make(map[string]string)
+	keys := []string{}
+	for _, entry := range versionEntries {
+		parts := VERSION_PATTERN.FindStringSubmatch(entry.Name())
+		if len(parts) == 4 {
+			major, err := strconv.Atoi(parts[1])
+			if err != nil {
+				return "", "", Fatal(err)
+			}
+			minor, err := strconv.Atoi(parts[2])
+			if err != nil {
+				return "", "", Fatal(err)
+			}
+			version, err := strconv.Atoi(parts[3])
+			if err != nil {
+				return "", "", Fatal(err)
+			}
+			key := fmt.Sprintf("%04d.%04d.%04d", major, minor, version)
+			keys = append(keys, key)
+			vmap[key] = entry.Name()
+		}
+	}
+	if len(keys) < 1 {
+		return "", "", Fatalf("no dist dirs found for os: %s", os)
+	}
+	slices.Sort(keys)
+	log.Printf("sorted_versions: %s\n", FormatJSON(keys))
+	version := vmap[keys[0]]
+
+	archEntries, err := fs.ReadDir(template.Dist, path.Join(distDir, version))
+	if err != nil {
+		return "", "", Fatal(err)
+	}
+	if len(archEntries) < 1 {
+		return "", "", Fatalf("no arch dirs found for os:%s version:%s\n", os, version)
+	}
+	arch := archEntries[0].Name()
+	return version, arch, nil
 }
 
 func (m *MkBoot) mkbootOpenBSD() error {
 	log.Printf("mkbootOpenBSD: %s %s\n", m.Config.Version, m.Config.Arch)
 
-	_, err := m.checkDistDir()
+	_, err := m.checkDistDir("openbsd", m.Config.Version, m.Config.Arch)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -135,7 +190,7 @@ func (m *MkBoot) mkbootDebian() error {
 	log.Printf("mkbootDebian: %s %s\n", m.Config.Version, m.Config.Arch)
 
 	// generate error if version/arch not present
-	distDir, err := m.checkDistDir()
+	distDir, err := m.checkDistDir("debian", m.Config.Version, m.Config.Arch)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -198,20 +253,29 @@ func (m *MkBoot) mkbootDebian() error {
 }
 
 func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
+	log.Printf("mkbootAlpine: imageLoader=%v\n", imageLoader)
+	version := m.Config.Version
+	arch := m.Config.OS
+	var err error
 
-	log.Printf("mkbootAlpine: %s %s\n", m.Config.Version, m.Config.Arch)
-
-	match := ALPINE_VERSION_PATTERN.FindStringSubmatch(m.Config.Version)
-	if len(match) != 4 {
-		return Fatalf("unexpected alpine version: %v", m.Config.Version)
+	if imageLoader {
+		version, arch, err = m.defaultDist("alpine")
+		if err != nil {
+			return Fatal(err)
+		}
 	}
-	major := match[1]
-	minor := match[2]
 
-	distDir, err := m.checkDistDir()
+	distDir, err := m.checkDistDir("alpine", version, arch)
 	if err != nil {
 		return Fatal(err)
 	}
+
+	match := ALPINE_VERSION_PATTERN.FindStringSubmatch(version)
+	if len(match) != 4 {
+		return Fatalf("unexpected alpine version: %v", version)
+	}
+	major := match[1]
+	minor := match[2]
 
 	// copy the alpine netboot kernel: /ipxe/MAC.kernel
 	srcKernel := filepath.Join(distDir, "kernel")
@@ -249,16 +313,6 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	err = files.CopyFile(dstPostinstall, srcPostinstall)
 	if err != nil {
 		return Fatal(err)
-	}
-
-	if imageLoader {
-		srcPreinstall := filepath.Join(m.TempDir, "preinstall")
-		dstPreinstall := filepath.Join(m.IpxeDir, m.Config.Address+".preinstall")
-		log.Printf("mkbootAlpine: preinstall=%s\n", dstPreinstall)
-		err = files.CopyFile(dstPreinstall, srcPreinstall)
-		if err != nil {
-			return Fatal(err)
-		}
 	}
 
 	// generate overlay tarball
@@ -352,8 +406,8 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 		return Fatal(err)
 	}
 
-	// if imageLoader is set, we are using the alpine installer to write the
-	// actual OS IMG file, so don't write the alpine one
+	// if called with imageLoader set, we are using the alpine installer
+	// to write an IMG file for another OS, so don't generate the alpine one
 	if !imageLoader {
 		err = m.buildIMG()
 		if err != nil {
@@ -373,7 +427,7 @@ func (m *MkBoot) mkbootWindows() error {
 	log.Printf("mkbootWindows: %s %s\n", m.Config.Version, m.Config.Arch)
 
 	// generate error if version/arch not present
-	_, err := m.checkDistDir()
+	_, err := m.checkDistDir("windows", m.Config.Version, m.Config.Arch)
 	if err != nil {
 		return Fatal(err)
 	}

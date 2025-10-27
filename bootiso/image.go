@@ -183,6 +183,13 @@ func CreateNetbootISO(dstImage, srcImage, efiImage string, rootFiles []string) e
 
 	log.Printf("CreateNetbootIsoImage: dst=%s src=%s efi=%s files=%v\n", dstImage, srcImage, efiImage, rootFiles)
 
+	if IsFile(dstImage) {
+		err := os.Remove(dstImage)
+		if err != nil {
+			return Fatal(err)
+		}
+	}
+
 	var outputIsoSize int64 = ISO_PAD_BYTES
 	var err error
 

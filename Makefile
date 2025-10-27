@@ -63,6 +63,9 @@ update-modules:
 	$(foreach s,$(common_go),sed <.proxy >$(s) 's/^package cmd/package $(lastword $(subst /, ,$(dir $(s))))/'; ) rm .proxy
 	$(MAKE)
 
+logclean:
+	echo >/var/log/netboot
+
 clean:
 	rm -f $(binary) *.core 
 	go clean

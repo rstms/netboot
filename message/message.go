@@ -14,5 +14,6 @@ type NetbootConfig struct {
 	Debug             bool   `json:"debug"`
 	Quiet             bool   `json:"quiet"`
 	Shutdown          bool   `json:"shutdown"`
-	ImageLoader       bool   `json:"image_loader"`
+	AlpineLoader      bool   `json:"alpine_loader"`
+	RootDevice        string `json:root_device"`
 }

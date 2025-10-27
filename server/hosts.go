@@ -689,17 +689,32 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// FIXME
-	///defer os.RemoveAll(tempDir)
-	log.Printf("NOT REMOVING netboot tempDir: %s\n", tempDir)
+	defer os.RemoveAll(tempDir)
 
-	// IPXE menu: ipxe/MAC.ipxe
-	autoexec := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.ipxe", config.Address))
-	err = c.expandIpxeFile(autoexec, config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config)
+	// IPXE autoexec ipxe/MAC.ipxe
+	ipxeAutoexec := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.ipxe", config.Address))
+	err = c.expandIpxeFile(ipxeAutoexec, config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config)
 	if err != nil {
 		Warning("%v", Fatal(err))
-		c.fail(w, "failed generating ipxe menu", http.StatusInternalServerError)
+		c.fail(w, "failed generating ipxe", http.StatusInternalServerError)
 		return
+	}
+
+	// copy ipxe/MAC.ipxe to temp dir autoexec.ipxe for generated ISO and IMG
+	err = files.CopyFile(filepath.Join(tempDir, "autoexec.ipxe"), ipxeAutoexec)
+	if err != nil {
+		c.fail(w, "failed copying ipxe", http.StatusInternalServerError)
+		return
+	}
+
+	// overwrite ipxe/MAC.ipxe with alpine-autoexec.ipxe for alpine image load
+	if config.AlpineLoader {
+		err = c.expandIpxeFile(ipxeAutoexec, "alpine-autoexec.ipxe", netbootURL, netbootHttpURL, &config)
+		if err != nil {
+			Warning("%v", Fatal(err))
+			c.fail(w, "failed generating image loader ipxe", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// installer response file: /ipxe/MAC.response
@@ -941,16 +956,11 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	tarball := filepath.Join(c.ipxeDir, config.Address+".tgz")
 
 	// add autoexec.ipxe to bootFiles
-	autoexec := filepath.Join(tempDir, "autoexec.ipxe")
-	err := files.CopyFile(autoexec, filepath.Join(c.ipxeDir, config.Address+".ipxe"))
-	if err != nil {
-		return "", []string{}, Fatal(err)
-	}
-	bootFiles = append(bootFiles, autoexec)
+	bootFiles = append(bootFiles, filepath.Join(tempDir, "autoexec.ipxe"))
 
 	// add root CA from tarball to bootFiles
 	clientCA := filepath.Join(tempDir, "keymaster.pem")
-	err = files.ExtractTarballFile(clientCA, "etc/ssl/keymaster.pem", tarball)
+	err := files.ExtractTarballFile(clientCA, "etc/ssl/keymaster.pem", tarball)
 	if err != nil {
 		return "", []string{}, Fatal(err)
 	}
@@ -985,6 +995,7 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	var netbootEnv string
 	netbootEnv += fmt.Sprintf("_url=%s\n", url)
 	netbootEnv += fmt.Sprintf("_mac=%s\n", config.Address)
+	netbootEnv += fmt.Sprintf("_root_device=%s\n", config.RootDevice)
 	netbootEnv += fmt.Sprintf("_certs='--cacert /cdrom/keymaster.pem --cert /cdrom/netboot.pem --key /cdrom/netboot.key'\n")
 	if config.Debug {
 		netbootEnv += "_debug=1\n"
@@ -1001,6 +1012,12 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	} else {
 		netbootEnv += "_shutdown=\n"
 	}
+	if config.AlpineLoader {
+		netbootEnv += "_image_loader=1\n"
+	} else {
+		netbootEnv += "_image_loader=\n"
+	}
+
 	netbootEnv += fmt.Sprintf("_gdl_url='%s/gdl/%s/%s/gdl.tgz'\n", url, config.Version, config.Arch)
 	err = os.WriteFile(netbootEnvFile, []byte(netbootEnv), 0644)
 	if err != nil {
@@ -1008,20 +1025,18 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	}
 	bootFiles = append(bootFiles, netbootEnvFile)
 
+	preinstall := filepath.Join(tempDir, "preinstall")
+	err = files.ExtractTarballFile(preinstall, "preinstall", tarball)
+	if err != nil {
+		return "", []string{}, Fatal(err)
+	}
+
 	// extract tarball postinstall to temp dir for debian mkboot
 	// NOTE: intentionally not added to bootFiles
 	postinstall := filepath.Join(tempDir, "postinstall")
 	err = files.ExtractTarballFile(postinstall, "postinstall", tarball)
 	if err != nil {
 		return "", []string{}, Fatal(err)
-	}
-
-	if config.ImageLoader {
-		preinstall := filepath.Join(tempDir, "preinstall")
-		err = files.ExtractTarballFile(preinstall, "preinstall", tarball)
-		if err != nil {
-			return "", []string{}, Fatal(err)
-		}
 	}
 
 	mkboot := NewMkBoot(tempDir, c.ipxeDir, url, &bootFiles, config)
