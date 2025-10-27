@@ -49,9 +49,9 @@ if [ -n "$_image_load" ]; then
     console_prompt "loading netboot.img"
     curl -Ls -o netboot.img ${_certs} ${_url}/ipxe/${_mac}.img
     # write image to hdd
-    console_prompt "writing netboot.img to /dev/${_image_load}"
-    dd if=netboot.img of=/dev/${_image_load}
-    #sh </dev/console >/dev/console 2>&1
+    #console_prompt "writing netboot.img to /dev/${_image_load}"
+    #dd if=netboot.img of=/dev/${_image_load}
+    sh </dev/console >/dev/console 2>&1
     console_prompt "reporting image loaded..."
     curl -L -o /dev/console ${_certs} "$_url/api/imaged/$_mac/"
     console_prompt "shutdown in 5 seconds..."
