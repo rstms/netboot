@@ -694,7 +694,8 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	ipxeAutoexec := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.ipxe", config.Address))
 
 	if config.AlpineLoader != "" {
-		// write ipxe/MAC.ipxe from alpine-autoexec.ipxe for alpine image load
+		// if AlpineLoader active, write ipxe/MAC.ipxe
+		// from alpine-autoexec.ipxe for alpine image load
 		version, arch, mirror, err := DefaultDist("alpine")
 		if err != nil {
 			Warning("%v", Fatal(err))
@@ -709,7 +710,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		}
 
 	} else {
-		// IPXE autoexec ipxe/MAC.ipxe
+		// AlpineLoader is not active, so write MAC.ipxe for selected OS
 		err = c.expandIpxeFile(ipxeAutoexec, config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config, config.Version, config.Arch, config.Mirror)
 		if err != nil {
 			Warning("%v", Fatal(err))
@@ -718,14 +719,14 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// autoexec.ipxe.iso is a copy of ipxe/MAC.ipxe (alpine-autoexec.ipxe if alpine image load)
+	// autoexec.ipxe.iso follows MAC.ipxe (alpine-autoexec.ipxe if alpine image load)
 	err = files.CopyFile(filepath.Join(tempDir, "autoexec.ipxe.iso"), ipxeAutoexec)
 	if err != nil {
 		c.fail(w, "failed copying autoexec.ipxe.iso", http.StatusInternalServerError)
 		return
 	}
 
-	// autoexec.ipxe.img is always the ipxe for the desired OS
+	// autoexec.ipxe.img is the ipxe for the selected OS regardless of alpine image load selection
 	err = c.expandIpxeFile(filepath.Join(tempDir, "autoexec.ipxe.img"), config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config, config.Version, config.Arch, config.Mirror)
 	if err != nil {
 		c.fail(w, "failed copying autoexec.ipxe.img", http.StatusInternalServerError)
@@ -968,7 +969,8 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 
 	tarball := filepath.Join(c.ipxeDir, config.Address+".tgz")
 
-	// add autoexec.ipxe to bootFiles
+	// add both autoexec.ipxe.iso and autoexec.ipxe.img to bootFiles
+	// buildIMG and buildISO will select the appropriate one
 	bootFiles = append(bootFiles, filepath.Join(tempDir, "autoexec.ipxe.iso"))
 	bootFiles = append(bootFiles, filepath.Join(tempDir, "autoexec.ipxe.img"))
 
