@@ -509,7 +509,6 @@ func (m *MkBoot) buildIMG(label string) error {
 		return Fatal(err)
 	}
 	log.Printf("BuildIMG[%s] wrote %s\n", label, dstImage)
-	panic("howdy")
 	return nil
 }
 
@@ -608,9 +607,10 @@ func (m *MkBoot) injectBootFiles(fatImage string) error {
 		case "autoexec.ipxe.iso":
 			name = ""
 		case "autoexec.ipxe.img":
-			name = "autoxexec.ipxe"
+			name = "autoexec.ipxe"
 		}
 		if name != "" {
+			log.Printf("injectBootFile %s -> %s\n", injectPathname, name)
 			err = image.AddFile(name, injectPathname)
 			if err != nil {
 				return Fatal(err)

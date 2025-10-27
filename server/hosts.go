@@ -971,7 +971,8 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	tarball := filepath.Join(c.ipxeDir, config.Address+".tgz")
 
 	// add autoexec.ipxe to bootFiles
-	bootFiles = append(bootFiles, filepath.Join(tempDir, "autoexec.ipxe"))
+	bootFiles = append(bootFiles, filepath.Join(tempDir, "autoexec.ipxe.iso"))
+	bootFiles = append(bootFiles, filepath.Join(tempDir, "autoexec.ipxe.img"))
 
 	// add root CA from tarball to bootFiles
 	clientCA := filepath.Join(tempDir, "keymaster.pem")
