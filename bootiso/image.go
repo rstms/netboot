@@ -293,14 +293,22 @@ func CreateNetbootISO(dstImage, srcImage, efiImage string, rootFiles []string) e
 	for _, pathname := range rootFiles {
 		_, name := filepath.Split(pathname)
 
-		if name == "autoexec.ipxe" {
+		writeFile := true
+		switch name {
+		case "autoexec.ipxe.img":
+			writeFile = false
+		case "autoexec.ipxe":
+			autoexecPresent = true
+		case "autoexec.ipxe.iso":
+			name = "autoexec.ipxe"
 			autoexecPresent = true
 		}
-
-		log.Printf("adding: %s -> %s\n", pathname, name)
-		err = copyFileToImage(dstFS, name, pathname)
-		if err != nil {
-			return Fatal(err)
+		if writeFile {
+			log.Printf("adding: %s -> %s\n", pathname, name)
+			err = copyFileToImage(dstFS, name, pathname)
+			if err != nil {
+				return Fatal(err)
+			}
 		}
 	}
 

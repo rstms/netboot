@@ -63,6 +63,9 @@ update-modules:
 	$(foreach s,$(common_go),sed <.proxy >$(s) 's/^package cmd/package $(lastword $(subst /, ,$(dir $(s))))/'; ) rm .proxy
 	$(MAKE)
 
+template/template.go: $(wildcard template/dist/*/*/*/*) $(wildcard template/ipxe/*) $(wildcard template/mkboot/*)
+	touch $@
+
 logclean:
 	echo >/var/log/netboot
 

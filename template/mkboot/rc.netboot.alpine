@@ -3,17 +3,17 @@
 # alpine rc.netboot
 # included in MAC.apkovl.tgz as /etc/local.d/auto-setup-alpine.start
 
-echo "Executing $0"
-
-_debug=
+echo >/dev/console "Executing $0"
 
 console_prompt() {
+    echo >/dev/console "$@"
     if [ -n "$_debug" ]; then
-	echo "$@"
-	echo "[enter to continue]"
+	echo >/dev/console "[enter to continue]"
 	read </dev/console response
     fi
 }
+
+console_prompt "rc.netboot.alpine"
 
 on_exit() {
     if [ -n "$_shutdown" ]; then
@@ -45,10 +45,17 @@ fi
 # install curl
 apk add curl
 
-if [ -n "$_image_loader" ]; then
+if [ -n "$_image_load" ]; then
+    console_prompt "Loading netboot.img"
     curl -Ls -o netboot.img ${_certs} ${_url}/ipxe/${_mac}.img
     # write image to hdd
-    dd if=netboot.img of=/dev/${_root_device}
+    console_prompt "Writing netboot img to /dev/${_root_device}"
+    dd if=netboot.img of=/dev/${_image_load}
+    sh </dev/console >/dev/console 2>&1
+    console_prompt "Reporting image loaded..."
+    curl -L -o /dev/console ${_certs} "$_url/api/imaged/$_mac/"
+    console_prompt "Reboot in 5 seconds..."
+    sleep 5
     exit
 fi
     

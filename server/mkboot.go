@@ -80,7 +80,7 @@ func (m *MkBoot) Generate() (string, error) {
 		return "", Fatalf("unexpected OS: '%s'", m.Config.OS)
 	}
 
-	if m.Config.AlpineLoader {
+	if m.Config.AlpineLoader != "" {
 		err := m.mkbootAlpine(true)
 		if err != nil {
 			return "", Fatal(err)
@@ -91,6 +91,7 @@ func (m *MkBoot) Generate() (string, error) {
 }
 
 func (m *MkBoot) checkDistDir(os, version, arch string) (string, error) {
+	log.Printf("checkDistDir: os=%s version=%s arch=%s\n", os, version, arch)
 	// generate error if version/arch not present
 	distDir := filepath.Join("dist", os, version, arch)
 	log.Printf("checking distDir: %s\n", distDir)
@@ -100,11 +101,11 @@ func (m *MkBoot) checkDistDir(os, version, arch string) (string, error) {
 	return distDir, nil
 }
 
-func (m *MkBoot) defaultDist(os string) (string, string, error) {
+func DefaultDist(os string) (string, string, string, error) {
 	distDir := path.Join("dist", os)
 	versionEntries, err := fs.ReadDir(template.Dist, distDir)
 	if err != nil {
-		return "", "", Fatal(err)
+		return "", "", "", Fatal(err)
 	}
 	vmap := make(map[string]string)
 	keys := []string{}
@@ -113,15 +114,15 @@ func (m *MkBoot) defaultDist(os string) (string, string, error) {
 		if len(parts) == 4 {
 			major, err := strconv.Atoi(parts[1])
 			if err != nil {
-				return "", "", Fatal(err)
+				return "", "", "", Fatal(err)
 			}
 			minor, err := strconv.Atoi(parts[2])
 			if err != nil {
-				return "", "", Fatal(err)
+				return "", "", "", Fatal(err)
 			}
 			version, err := strconv.Atoi(parts[3])
 			if err != nil {
-				return "", "", Fatal(err)
+				return "", "", "", Fatal(err)
 			}
 			key := fmt.Sprintf("%04d.%04d.%04d", major, minor, version)
 			keys = append(keys, key)
@@ -129,7 +130,7 @@ func (m *MkBoot) defaultDist(os string) (string, string, error) {
 		}
 	}
 	if len(keys) < 1 {
-		return "", "", Fatalf("no dist dirs found for os: %s", os)
+		return "", "", "", Fatalf("no dist dirs found for os: %s", os)
 	}
 	slices.Sort(keys)
 	log.Printf("sorted_versions: %s\n", FormatJSON(keys))
@@ -137,13 +138,28 @@ func (m *MkBoot) defaultDist(os string) (string, string, error) {
 
 	archEntries, err := fs.ReadDir(template.Dist, path.Join(distDir, version))
 	if err != nil {
-		return "", "", Fatal(err)
+		return "", "", "", Fatal(err)
 	}
 	if len(archEntries) < 1 {
-		return "", "", Fatalf("no arch dirs found for os:%s version:%s\n", os, version)
+		return "", "", "", Fatalf("no arch dirs found for os:%s version:%s\n", os, version)
 	}
 	arch := archEntries[0].Name()
-	return version, arch, nil
+
+	var mirror string
+	switch os {
+	case "alpine":
+		mirror = DEFAULT_ALPINE_MIRROR
+	case "debian":
+		mirror = DEFAULT_DEBIAN_MIRROR
+	case "openbsd":
+		mirror = DEFAULT_OPENBSD_MIRROR
+	default:
+		return "", "", "", Fatalf("unexpected os: %s\n", os)
+	}
+
+	log.Printf("DefaultDist(%s) returning version=%s arch=%s mirror=%s\n", os, version, arch, mirror)
+
+	return version, arch, mirror, nil
 }
 
 func (m *MkBoot) mkbootOpenBSD() error {
@@ -174,12 +190,12 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	}
 	*m.BootFiles = append(*m.BootFiles, dstGdl)
 
-	err = m.buildIMG()
+	err = m.buildIMG("openbsd")
 	if err != nil {
 		return Fatal(err)
 	}
 
-	err = m.buildISO()
+	err = m.buildISO("openbsd")
 	if err != nil {
 		return Fatal(err)
 	}
@@ -239,12 +255,12 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
-	err = m.buildIMG()
+	err = m.buildIMG("debian")
 	if err != nil {
 		return Fatal(err)
 	}
 
-	err = m.buildISO()
+	err = m.buildISO("debian")
 	if err != nil {
 		return Fatal(err)
 	}
@@ -255,11 +271,13 @@ func (m *MkBoot) mkbootDebian() error {
 func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	log.Printf("mkbootAlpine: imageLoader=%v\n", imageLoader)
 	version := m.Config.Version
-	arch := m.Config.OS
+	arch := m.Config.Arch
+	mirror := m.Config.Mirror
+
 	var err error
 
 	if imageLoader {
-		version, arch, err = m.defaultDist("alpine")
+		version, arch, mirror, err = DefaultDist("alpine")
 		if err != nil {
 			return Fatal(err)
 		}
@@ -368,11 +386,11 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	}
 	modes[apkDir] = 0755
 
-	if !strings.HasPrefix(m.Config.Mirror, "http") {
-		return Fatalf("unexpected non-URL alpine mirror: %s", m.Config.Mirror)
+	if !strings.HasPrefix(mirror, "http") {
+		return Fatalf("unexpected non-URL alpine mirror: %s", mirror)
 	}
-	repoData := fmt.Sprintf("%s/alpine/v%s.%s/main\n", m.Config.Mirror, major, minor)
-	repoData += fmt.Sprintf("%s/alpine/v%s.%s/community\n", m.Config.Mirror, major, minor)
+	repoData := fmt.Sprintf("%s/alpine/v%s.%s/main\n", mirror, major, minor)
+	repoData += fmt.Sprintf("%s/alpine/v%s.%s/community\n", mirror, major, minor)
 	file = filepath.Join(apkDir, "repositories")
 	err = os.WriteFile(file, []byte(repoData), 0644)
 	if err != nil {
@@ -408,14 +426,16 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 
 	// if called with imageLoader set, we are using the alpine installer
 	// to write an IMG file for another OS, so don't generate the alpine one
+	label := "alpine"
 	if !imageLoader {
-		err = m.buildIMG()
+		label += "-loader"
+		err = m.buildIMG(label)
 		if err != nil {
 			return Fatal(err)
 		}
 	}
 
-	err = m.buildISO()
+	err = m.buildISO(label)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -473,8 +493,8 @@ func (m *MkBoot) windowsUserDir(oemDir, userName string) string {
 	return filepath.Join(oemDir, "Users", userName+"."+strings.ToUpper(m.Config.Hostname))
 }
 
-// build a netboot IMG with embedded IPXE menu autoexec.ipxe and BootFiles
-func (m *MkBoot) buildIMG() error {
+// build a netboot IMG with embedded IPXE autoexec.ipxe and BootFiles
+func (m *MkBoot) buildIMG(label string) error {
 
 	// hetzner rescue mode netboot image: /ipxe/MAC.img
 	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
@@ -488,11 +508,13 @@ func (m *MkBoot) buildIMG() error {
 	if err != nil {
 		return Fatal(err)
 	}
+	log.Printf("BuildIMG[%s] wrote %s\n", label, dstImage)
+	panic("howdy")
 	return nil
 }
 
 // build a netboot ISO with embedded IPXE menu autoexec.ipxe
-func (m *MkBoot) buildISO() error {
+func (m *MkBoot) buildISO(label string) error {
 
 	// FIXME: netboot iso seems to be using the client certificate and CA baked into the source ISO
 	// instead it should use /netboot.pem, /netboot.key from the ISO root directory
@@ -512,7 +534,7 @@ func (m *MkBoot) buildISO() error {
 	}
 
 	// use the customized autoexec.ipxe in the temp directory
-	autoexec := filepath.Join(m.TempDir, "autoexec.ipxe")
+	autoexec := filepath.Join(m.TempDir, "autoexec.ipxe.iso")
 
 	// generate the EFI boot disk image with autoexec (ipxe menu)
 	efiImage := filepath.Join(m.TempDir, "efi.img")
@@ -526,6 +548,8 @@ func (m *MkBoot) buildISO() error {
 	if err != nil {
 		return Fatal(err)
 	}
+
+	log.Printf("BuildISO[%s] wrote %s\n", label, m.ISO)
 
 	return nil
 }
@@ -577,12 +601,20 @@ func (m *MkBoot) injectBootFiles(fatImage string) error {
 		return Fatal(err)
 	}
 	defer image.Close()
-	for i, injectFile := range *m.BootFiles {
-		log.Printf("[%d] %s\n", i, injectFile)
-		_, injectName := filepath.Split(injectFile)
-		err = image.AddFile(injectName, injectFile)
-		if err != nil {
-			return Fatal(err)
+	for i, injectPathname := range *m.BootFiles {
+		_, name := filepath.Split(injectPathname)
+		log.Printf("[%d] name=%s injectPath=%s\n", i, name, injectPathname)
+		switch name {
+		case "autoexec.ipxe.iso":
+			name = ""
+		case "autoexec.ipxe.img":
+			name = "autoxexec.ipxe"
+		}
+		if name != "" {
+			err = image.AddFile(name, injectPathname)
+			if err != nil {
+				return Fatal(err)
+			}
 		}
 	}
 	return nil

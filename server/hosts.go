@@ -171,7 +171,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 }
 
 // expand macros in file from Ipxe template writing to dstPath
-func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, config *message.NetbootConfig) error {
+func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, config *message.NetbootConfig, version, arch, mirror string) error {
 
 	log.Printf("expandIpxeFile(%s, %s, %s, <config>)\n", dstPathname, srcName, url)
 
@@ -205,18 +205,18 @@ func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, co
 		case strings.HasPrefix(line, "set serial_params"):
 			_, err = fmt.Fprintf(dst, "set serial_params %s\n", config.Serial)
 		case strings.HasPrefix(line, "set mirror"):
-			_, err = fmt.Fprintf(dst, "set mirror %s\n", config.Mirror)
+			_, err = fmt.Fprintf(dst, "set mirror %s\n", mirror)
 		case strings.HasPrefix(line, "set branch"):
-			match := ALPINE_VERSION_PATTERN.FindStringSubmatch(config.Version)
+			match := ALPINE_VERSION_PATTERN.FindStringSubmatch(version)
 			if len(match) != 4 {
-				return Fatalf("unexpected alpine version format: %s\n", config.Version)
+				return Fatalf("unexpected alpine version format: %s\n", version)
 			}
 			branch := fmt.Sprintf("v%s.%s", match[1], match[2])
 			_, err = fmt.Fprintf(dst, "set branch %s\n", branch)
 		case strings.HasPrefix(line, "set version"):
-			_, err = fmt.Fprintf(dst, "set version %s\n", config.Version)
+			_, err = fmt.Fprintf(dst, "set version %s\n", version)
 		case strings.HasPrefix(line, "set arch"):
-			_, err = fmt.Fprintf(dst, "set arch %s\n", config.Arch)
+			_, err = fmt.Fprintf(dst, "set arch %s\n", arch)
 		default:
 			_, err = dst.Write([]byte(line + "\n"))
 		}
@@ -459,7 +459,7 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch ext {
-	case "iso", "img", "sh", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "preinstall", "postinstall", "netboot":
+	case "iso", "img", "sh", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "postinstall":
 		http.ServeFile(w, r, filepath.Join(c.ipxeDir, mac+"."+ext))
 		return
 	}
@@ -498,12 +498,14 @@ func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.R
 		c.fail(w, "no mirror configured", http.StatusNotImplemented)
 		return
 	}
+
 	pathname, data, err := DownloadFileRoot(cacheRoot, mirrorUrl, r.URL.Path)
 	if err != nil {
 		Warning("Proxy '%s' failed: %v", r.URL.Path, err)
 		c.fail(w, "proxy failure", http.StatusBadGateway)
 		return
 	}
+
 	switch {
 	case pathname != "":
 		http.ServeFileFS(w, r, cacheRoot.FS(), pathname)
@@ -691,30 +693,45 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 
 	defer os.RemoveAll(tempDir)
 
-	// IPXE autoexec ipxe/MAC.ipxe
 	ipxeAutoexec := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.ipxe", config.Address))
-	err = c.expandIpxeFile(ipxeAutoexec, config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config)
-	if err != nil {
-		Warning("%v", Fatal(err))
-		c.fail(w, "failed generating ipxe", http.StatusInternalServerError)
-		return
-	}
 
-	// copy ipxe/MAC.ipxe to temp dir autoexec.ipxe for generated ISO and IMG
-	err = files.CopyFile(filepath.Join(tempDir, "autoexec.ipxe"), ipxeAutoexec)
-	if err != nil {
-		c.fail(w, "failed copying ipxe", http.StatusInternalServerError)
-		return
-	}
-
-	// overwrite ipxe/MAC.ipxe with alpine-autoexec.ipxe for alpine image load
-	if config.AlpineLoader {
-		err = c.expandIpxeFile(ipxeAutoexec, "alpine-autoexec.ipxe", netbootURL, netbootHttpURL, &config)
+	if config.AlpineLoader != "" {
+		// write ipxe/MAC.ipxe from alpine-autoexec.ipxe for alpine image load
+		version, arch, mirror, err := DefaultDist("alpine")
+		if err != nil {
+			Warning("%v", Fatal(err))
+			c.fail(w, "failed selecting image loader dist", http.StatusInternalServerError)
+			return
+		}
+		err = c.expandIpxeFile(ipxeAutoexec, "alpine-autoexec.ipxe", netbootURL, netbootHttpURL, &config, version, arch, mirror)
 		if err != nil {
 			Warning("%v", Fatal(err))
 			c.fail(w, "failed generating image loader ipxe", http.StatusInternalServerError)
 			return
 		}
+
+	} else {
+		// IPXE autoexec ipxe/MAC.ipxe
+		err = c.expandIpxeFile(ipxeAutoexec, config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config, config.Version, config.Arch, config.Mirror)
+		if err != nil {
+			Warning("%v", Fatal(err))
+			c.fail(w, "failed generating ipxe", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// autoexec.ipxe.iso is a copy of ipxe/MAC.ipxe (alpine-autoexec.ipxe if alpine image load)
+	err = files.CopyFile(filepath.Join(tempDir, "autoexec.ipxe.iso"), ipxeAutoexec)
+	if err != nil {
+		c.fail(w, "failed copying autoexec.ipxe.iso", http.StatusInternalServerError)
+		return
+	}
+
+	// autoexec.ipxe.img is always the ipxe for the desired OS
+	err = c.expandIpxeFile(filepath.Join(tempDir, "autoexec.ipxe.img"), config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config, config.Version, config.Arch, config.Mirror)
+	if err != nil {
+		c.fail(w, "failed copying autoexec.ipxe.img", http.StatusInternalServerError)
+		return
 	}
 
 	// installer response file: /ipxe/MAC.response
@@ -869,33 +886,31 @@ func (c *HostCache) HostBootedHandlerTLS(w http.ResponseWriter, r *http.Request)
 	}
 	address := normalizeMAC(r.PathValue("mac"))
 	ip := r.PathValue("ip")
-	switch {
-	case address == "":
-	case ip == "":
-	default:
-		log.Printf("HostBootedHandler setting MAC=%s IP=%s State=booted\n", address, ip)
-		c.cache[address] = HostState{MAC: address, IP: ip, State: "booted"}
-		c.deleteAddressFiles(address, w)
-		c.respond(w, "BootReportResponse", Response{Message: "firstboot acknowleded"})
-		return
-	}
-	c.fail(w, "invalid path", http.StatusBadRequest)
+	c.handleNetbootReport(w, r, address, ip, "booted")
 }
 
 func (c *HostCache) HostInstalledHandlerTLS(w http.ResponseWriter, r *http.Request) {
-	c.optionalClientCert(w, r)
+	c.requireClientCert(w, r)
 	address := normalizeMAC(r.PathValue("mac"))
 	ip := r.PathValue("ip")
-	switch {
-	case address == "":
-	case ip == "":
-	default:
-		log.Printf("HostInstalledHandler setting MAC=%s IP=%s State=installed\n", address, ip)
-		c.cache[address] = HostState{MAC: address, IP: ip, State: "installed"}
-		c.respond(w, "BootReportResponse", Response{Message: "install acknowleded"})
+	c.handleNetbootReport(w, r, address, ip, "installed")
+}
+
+func (c *HostCache) HostImagedHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.requireClientCert(w, r)
+	address := normalizeMAC(r.PathValue("mac"))
+	c.handleNetbootReport(w, r, address, "", "imaged")
+}
+
+func (c *HostCache) handleNetbootReport(w http.ResponseWriter, r *http.Request, address, ip, state string) {
+	if address == "" {
+		Warning("netboot status report missing address: %s", address)
+		c.fail(w, "invalid path", http.StatusBadRequest)
 		return
 	}
-	c.fail(w, "invalid path", http.StatusBadRequest)
+	log.Printf("Received netboot report: MAC=%s IP=%s State=%s\n", address, ip, state)
+	c.cache[address] = HostState{MAC: address, IP: ip, State: state}
+	c.respond(w, "BootReportResponse", Response{Message: "acknowleded netboot state: " + state})
 }
 
 func (c *HostCache) HostAddressQueryHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -992,44 +1007,37 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 
 	// write netboot.env to temp dir for iso
 	netbootEnvFile := filepath.Join(tempDir, "netboot.env")
-	var netbootEnv string
-	netbootEnv += fmt.Sprintf("_url=%s\n", url)
-	netbootEnv += fmt.Sprintf("_mac=%s\n", config.Address)
-	netbootEnv += fmt.Sprintf("_root_device=%s\n", config.RootDevice)
-	netbootEnv += fmt.Sprintf("_certs='--cacert /cdrom/keymaster.pem --cert /cdrom/netboot.pem --key /cdrom/netboot.key'\n")
+	env := make(map[string]string)
+	env["_url"] = url
+	env["_mac"] = config.Address
+	env["_certs"] = "'--cacert /cdrom/keymaster.pem --cert /cdrom/netboot.pem --key /cdrom/netboot.key'"
+	env["_image_load"] = config.AlpineLoader
 	if config.Debug {
-		netbootEnv += "_debug=1\n"
+		env["_debug"] = "1"
 	} else {
-		netbootEnv += "_debug=\n"
+		env["_debug"] = ""
 	}
 	if config.Quiet {
-		netbootEnv += "_quiet=1\n"
+		env["_quiet"] = "1"
 	} else {
-		netbootEnv += "_quiet=\n"
+		env["_quiet"] = ""
 	}
 	if config.Shutdown {
-		netbootEnv += "_shutdown=1\n"
+		env["_shutdown"] = "1"
 	} else {
-		netbootEnv += "_shutdown=\n"
+		env["_shutdown"] = ""
 	}
-	if config.AlpineLoader {
-		netbootEnv += "_image_loader=1\n"
-	} else {
-		netbootEnv += "_image_loader=\n"
-	}
+	env["_gdl_url"] = fmt.Sprintf("%s/gdl/%s/%s/gdl.tgz", url, config.Version, config.Arch)
 
-	netbootEnv += fmt.Sprintf("_gdl_url='%s/gdl/%s/%s/gdl.tgz'\n", url, config.Version, config.Arch)
+	netbootEnv := ""
+	for key, value := range env {
+		netbootEnv += fmt.Sprintf("export %s=%s\n", key, value)
+	}
 	err = os.WriteFile(netbootEnvFile, []byte(netbootEnv), 0644)
 	if err != nil {
 		return "", []string{}, Fatal(err)
 	}
 	bootFiles = append(bootFiles, netbootEnvFile)
-
-	preinstall := filepath.Join(tempDir, "preinstall")
-	err = files.ExtractTarballFile(preinstall, "preinstall", tarball)
-	if err != nil {
-		return "", []string{}, Fatal(err)
-	}
 
 	// extract tarball postinstall to temp dir for debian mkboot
 	// NOTE: intentionally not added to bootFiles
@@ -1046,7 +1054,6 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	}
 	log.Printf("Generated %s\n", isoFile)
 	return isoFile, bootFiles, nil
-
 }
 
 func normalizeMAC(mac string) string {
