@@ -190,7 +190,8 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	}
 	*m.BootFiles = append(*m.BootFiles, dstGdl)
 
-	err = m.buildIMG("openbsd")
+	srcImage := fmt.Sprintf("openbsd-%s-%s.img.gz", m.Config.Version, m.Config.Arch)
+	err = m.buildIMG("openbsd", srcImage, false)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -255,7 +256,7 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
-	err = m.buildIMG("debian")
+	err = m.buildIMG("debian", "netboot.xyz.img.gz", true)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -429,7 +430,7 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	label := "alpine"
 	if !imageLoader {
 		label += "-loader"
-		err = m.buildIMG(label)
+		err = m.buildIMG(label, "netboot.xyz.img.gz", true)
 		if err != nil {
 			return Fatal(err)
 		}
@@ -494,19 +495,21 @@ func (m *MkBoot) windowsUserDir(oemDir, userName string) string {
 }
 
 // build a netboot IMG with embedded IPXE autoexec.ipxe and BootFiles
-func (m *MkBoot) buildIMG(label string) error {
+func (m *MkBoot) buildIMG(label, srcImage string, injectFiles bool) error {
 
 	// hetzner rescue mode netboot image: /ipxe/MAC.img
-	srcImage := filepath.Join("ipxe", "netboot.xyz.img.gz")
+	srcImagePathname := filepath.Join("ipxe", srcImage)
 	dstImage := filepath.Join(m.IpxeDir, m.Config.Address+".img")
-	err := files.UnzipFileFromFS(dstImage, srcImage, template.Ipxe)
+	err := files.UnzipFileFromFS(dstImage, srcImagePathname, template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
 
-	err = m.injectBootFiles(dstImage)
-	if err != nil {
-		return Fatal(err)
+	if injectFiles {
+		err = m.injectBootFiles(dstImage)
+		if err != nil {
+			return Fatal(err)
+		}
 	}
 	log.Printf("BuildIMG[%s] wrote %s\n", label, dstImage)
 	return nil
