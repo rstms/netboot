@@ -106,9 +106,10 @@ mount_netboot_cdrom() {
 	    . ./MAKEDEV cd0
 	    cd /
 	    if { disklabel 2>/dev/null cd0 || true; } | grep 'c:[[:space:]].*[[:space:]]ISO9660' ; then
-		echo "CDROM detected; mouting ISO9660 filesystem at /netboot_config"
+		echo "CDROM detected; mounting ISO9660 filesystem at /netboot_config"
 		mkdir -p /netboot_config
 		mount /dev/cd0c /netboot_config
+		ls -al /netboot_config
 	    fi
 	else 
 	    echo "cd0 device not detected"

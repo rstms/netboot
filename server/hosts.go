@@ -1031,8 +1031,11 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	env["_gdl_url"] = fmt.Sprintf("%s/gdl/%s/%s/gdl.tgz", url, config.Version, config.Arch)
 
 	netbootEnv := ""
+	envPrefix := ""
+	//envPrefix := "export "
+
 	for key, value := range env {
-		netbootEnv += fmt.Sprintf("export %s=%s\n", key, value)
+		netbootEnv += fmt.Sprintf("%s%s=%s\n", envPrefix, key, value)
 	}
 	err = os.WriteFile(netbootEnvFile, []byte(netbootEnv), 0644)
 	if err != nil {
