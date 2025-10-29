@@ -17,3 +17,30 @@ type NetbootConfig struct {
 	ImageSource       string `json:"image_source"`
 	AlpineLoader      string `json:"alpine_loader"`
 }
+
+type HostState struct {
+	MAC   string `json:"mac"`
+	IP    string `json:"ip"`
+	State string `json:"state"`
+}
+
+type NetbootResponse struct {
+	Message string `json:"message"`
+}
+
+type NetbootAddHostResponse struct {
+	Message   string   `json:"message"`
+	ISO       string   `json: "iso"`
+	IsoSHA512 string   `json: "iso_sha512"`
+	Files     []string `json:"files"`
+}
+
+type NetbootListHostsResponse struct {
+	Message   string   `json:"message"`
+	Addresses []string `json:"addresses"`
+}
+
+type NetbootDeleteHostResponse struct {
+	Message string   `json:"message"`
+	Files   []string `json:"files"`
+}

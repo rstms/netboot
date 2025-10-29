@@ -36,32 +36,6 @@ type Host struct {
 	Address string `json:"address"`
 }
 
-type HostState struct {
-	MAC   string `json:"mac"`
-	IP    string `json:"ip"`
-	State string `json:"state"`
-}
-
-type Response struct {
-	Message string `json:"message"`
-}
-
-type AddResponse struct {
-	Message string   `json:"message"`
-	ISO     string   `json: "iso"`
-	Files   []string `json:"files"`
-}
-
-type HostListResponse struct {
-	Message   string   `json:"message"`
-	Addresses []string `json:"addresses"`
-}
-
-type DeleteResponse struct {
-	Message string   `json:"message"`
-	Files   []string `json:"files"`
-}
-
 var MAC_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa-f]{2})$`)
 var NORMALIZED_MAC_PATTERN = regexp.MustCompile(`^[0-9a-f]{12}$`)
 var IPXE_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa-f]{2})\.ipxe$`)
@@ -92,7 +66,7 @@ type HostCache struct {
 	cacheDir          string
 	ipxeDir           string
 	distDir           string
-	cache             map[string]HostState
+	cache             map[string]message.HostState
 	httpPort          int
 	httpsPort         int
 	proxy             bool
@@ -126,7 +100,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		httpPort:     httpPort,
 		httpsPort:    httpsPort,
 		proxy:        proxyEnabled,
-		cache:        make(map[string]HostState),
+		cache:        make(map[string]message.HostState),
 		ipxeDir:      filepath.Join(dir, "ipxe"),
 		distDir:      filepath.Join(dir, "dist"),
 		noDeleteIpxe: ViperGetBool(prefix + "no_delete_ipxe"),
@@ -607,7 +581,7 @@ func (c *HostCache) UploadPackageHandlerTLS(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	c.respond(w, "UploadResponse", Response{Message: fmt.Sprintf("%v bytes written", fileBytes)})
+	c.respond(w, "UploadResponse", message.NetbootResponse{Message: fmt.Sprintf("%v bytes written", fileBytes)})
 }
 
 func (c *HostCache) mkURLs(r *http.Request) (string, string) {
@@ -649,7 +623,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	log.Printf("adding host %s %s %s\n", config.Address, config.OS, config.Version)
 
 	log.Printf("AddHostHandler setting MAC=%s IP=''\n", config.Address)
-	c.cache[config.Address] = HostState{MAC: config.Address, State: "init"}
+	c.cache[config.Address] = message.HostState{MAC: config.Address, State: "init"}
 
 	distNames, err := template.DistNames()
 	if err != nil {
@@ -781,7 +755,19 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.respond(w, "AddResponse", AddResponse{Message: fmt.Sprintf("%s configured", config.Address), ISO: booturl(netbootURL, isoFile), Files: bootFiles})
+	checksum, err := files.CalculateSHA512(isoFile)
+	if err != nil {
+		Warning("%v", Fatal(err))
+		c.fail(w, "failed calculating ISO checksum", http.StatusInternalServerError)
+		return
+	}
+
+	c.respond(w, "AddResponse", message.NetbootAddHostResponse{
+		Message:   fmt.Sprintf("%s configured", config.Address),
+		ISO:       booturl(netbootURL, isoFile),
+		IsoSHA512: checksum,
+		Files:     bootFiles},
+	)
 }
 
 func formatPartitionTemplate(src []byte) ([]byte, error) {
@@ -871,7 +857,7 @@ func (c *HostCache) deleteAddressFiles(inAddress string, w http.ResponseWriter) 
 				c.fail(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			c.respond(w, "DeleteResponse", DeleteResponse{Message: fmt.Sprintf("deleted: %d", len(files)), Files: files})
+			c.respond(w, "DeleteResponse", message.NetbootDeleteHostResponse{Message: fmt.Sprintf("deleted: %d", len(files)), Files: files})
 			return
 		}
 	}
@@ -908,8 +894,8 @@ func (c *HostCache) handleNetbootReport(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	log.Printf("Received netboot report: MAC=%s IP=%s State=%s\n", address, ip, state)
-	c.cache[address] = HostState{MAC: address, IP: ip, State: state}
-	c.respond(w, "BootReportResponse", Response{Message: "acknowleded netboot state: " + state})
+	c.cache[address] = message.HostState{MAC: address, IP: ip, State: state}
+	c.respond(w, "BootReportResponse", message.NetbootResponse{Message: "acknowleded netboot state: " + state})
 }
 
 func (c *HostCache) HostAddressQueryHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -919,10 +905,10 @@ func (c *HostCache) HostAddressQueryHandlerTLS(w http.ResponseWriter, r *http.Re
 	segments := strings.Split(r.URL.Path, "/")
 	if len(segments) > 3 {
 		address := segments[3]
-		var hostState HostState
+		var hostState message.HostState
 		hostState, ok := c.cache[address]
 		if !ok {
-			hostState = HostState{MAC: address}
+			hostState = message.HostState{MAC: address}
 		}
 		log.Printf("HostAddressQueryHandler returning: %s\n", FormatJSON(hostState))
 		c.respond(w, "HostAddressResponse", hostState)
@@ -957,7 +943,7 @@ func (c *HostCache) ListHostsHandlerTLS(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	c.respond(w, "HostListResponse", HostListResponse{Message: fmt.Sprintf("config count: %d", len(addresses)), Addresses: addresses})
+	c.respond(w, "HostListResponse", message.NetbootListHostsResponse{Message: fmt.Sprintf("config count: %d", len(addresses)), Addresses: addresses})
 }
 
 // Generate a url-customized netboot ISO returning generated iso pathname
@@ -1068,7 +1054,7 @@ func (c *HostCache) ShutdownHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if !c.requireClientCert(w, r) {
 		return
 	}
-	c.respond(w, "ShutdownRequestReponse", Response{Message: "shutdown request acknowleged"})
+	c.respond(w, "ShutdownRequestReponse", message.NetbootResponse{Message: "shutdown request acknowleged"})
 	InternalShutdownRequest <- struct{}{}
 }
 
@@ -1077,7 +1063,7 @@ func (c *HostCache) AddWhitelistAddressHandlerTLS(w http.ResponseWriter, r *http
 		return
 	}
 	if c.whitelistCommand == "" {
-		c.respond(w, "WhitelistAddressResponse", Response{Message: "not configured"})
+		c.respond(w, "WhitelistAddressResponse", message.NetbootResponse{Message: "not configured"})
 		return
 	}
 	ip := r.PathValue("ip")
@@ -1096,7 +1082,7 @@ func (c *HostCache) AddWhitelistAddressHandlerTLS(w http.ResponseWriter, r *http
 		msg, _ := c.deleteWhitelist(ip)
 		log.Printf("whitelist expired: %s\n", msg)
 	}()
-	c.respond(w, "WhitelistAddressResponse", Response{Message: "whitelisted: " + ip})
+	c.respond(w, "WhitelistAddressResponse", message.NetbootResponse{Message: "whitelisted: " + ip})
 }
 
 func (c *HostCache) DeleteWhitelistAddressHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -1104,7 +1090,7 @@ func (c *HostCache) DeleteWhitelistAddressHandlerTLS(w http.ResponseWriter, r *h
 		return
 	}
 	if c.whitelistCommand == "" {
-		c.respond(w, "WhitelistAddressResponse", Response{Message: "not configured"})
+		c.respond(w, "WhitelistAddressResponse", message.NetbootResponse{Message: "not configured"})
 		return
 	}
 	ip := r.PathValue("ip")
@@ -1113,7 +1099,7 @@ func (c *HostCache) DeleteWhitelistAddressHandlerTLS(w http.ResponseWriter, r *h
 		c.fail(w, msg, http.StatusInternalServerError)
 		return
 	}
-	c.respond(w, "WhitelistAddressResponse", Response{Message: msg})
+	c.respond(w, "WhitelistAddressResponse", message.NetbootResponse{Message: msg})
 }
 
 func (c *HostCache) deleteWhitelist(ipaddr string) (string, bool) {
@@ -1143,7 +1129,7 @@ func (c *HostCache) AddIsoKeyHandlerTLS(w http.ResponseWriter, r *http.Request) 
 		}
 	}()
 	log.Printf("Added ISOkey[%s]=%s\n", key, mac)
-	c.respond(w, "iso key added", Response{Message: "key added"})
+	c.respond(w, "iso key added", message.NetbootResponse{Message: "key added"})
 }
 
 func (c *HostCache) DeleteIsoKeyHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -1153,9 +1139,9 @@ func (c *HostCache) DeleteIsoKeyHandlerTLS(w http.ResponseWriter, r *http.Reques
 	key := r.PathValue("key")
 	msg, ok := c.deleteIsoKey(key)
 	if !ok {
-		c.respond(w, msg, Response{Message: msg})
+		c.respond(w, msg, message.NetbootResponse{Message: msg})
 	}
-	c.respond(w, msg, Response{Message: msg})
+	c.respond(w, msg, message.NetbootResponse{Message: msg})
 }
 
 func (c *HostCache) deleteIsoKey(key string) (string, bool) {
