@@ -9,8 +9,6 @@ exec >/dev/console 2>&1
 
 echo "Executing $0"
 
-_debug=1
-
 console_prompt() {
     echo "$@"
     if [ -n "$_debug" ]; then
@@ -55,17 +53,15 @@ echo "mac_address=$mac_addr"
 ip_addr=$(ifconfig $_egress | awk '/[[:space:]]inet addr:/{gsub(/^.*:/, "", $2); print $2}')
 echo "ip_address=$ip_addr"
 
-echo "bootstrap_id=$_bootstrap_id"
 
 # install curl
 apk add curl
 
 if [ "$_mac" == "000000000000" ]; then
+    echo "bootstrap_id=$_bootstrap_id"
     report_url="${_url}/api/bootstrap/${_bootstrap_id}/${mac_addr}/${ip_addr}/"
     console_prompt "Sending $report_url"
-    sleep 15
     curl -v -L -X PUT -o /dev/console ${_certs} "$report_url"
-    sleep 60
     console_prompt "shutdown in 5 seconds..."
     sleep 5
     /sbin/poweroff
