@@ -1,0 +1,56 @@
+#!ipxe
+
+# alpine autoconfig.ipxe
+
+set netboot https://netboot.rstms.net
+set sanboot http://netboot.rstms.net
+set mirror
+set branch
+set version
+set arch
+set kernel_params
+set serial_params
+
+iseq ${cls} serial && goto ignore_cls ||
+set cls:hex 1b:5b:4a  # ANSI clear screen sequence - "^[[J"
+set cls ${cls:string}
+:ignore_cls
+
+dhcp && goto dhcp_ok ||
+echo "DHCP configuration failed, rebooting..."
+sleep 5
+reboot
+:dhcp_ok
+
+ntp pool.ntp.org && goto ntp_ok ||
+echo "NTP clock reset failed, rebooting..."
+sleep 5
+reboot
+:ntp_ok
+
+
+echo netboot=${netboot}
+echo mac=${net0/mac}
+echo ip=${net0/ip}
+echo mirror=${mirror}
+echo branch=${branch}
+echo version=${version}
+echo arch=${arch}
+
+#prompt --key 0x02 --timeout 2000 Press Ctrl-B for the iPXE command line... && shell ||
+
+set bootfile ${netboot}/ipxe/000000000000
+set sanfile ${sanboot}/san/000000000000
+
+set cmdline modules=loop,squashfs alpine_repo=${mirror}/${branch}/main
+# quiet nomodeset
+
+set modloop modloop=${sanfile}.modloop
+set apkovl apkovl=${sanfile}.apkovl.tar.gz
+
+imgfree
+kernel ${bootfile}.kernel ${cmdline} ${modloop} ${apkovl} ${kernel_params} 
+initrd ${bootfile}.initrd
+boot
+
+exit 0

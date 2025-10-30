@@ -703,7 +703,11 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 
 	} else {
 		// AlpineLoader is not active, so write MAC.ipxe for selected OS
-		err = c.expandIpxeFile(ipxeAutoexec, config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config, config.Version, config.Arch, config.Mirror)
+		autoexecName := config.OS
+		if config.Address == BOOTSTRAP_MAC_ADDRESS {
+			autoexecName = "bootstrap"
+		}
+		err = c.expandIpxeFile(ipxeAutoexec, autoexecName+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config, config.Version, config.Arch, config.Mirror)
 		if err != nil {
 			Warning("%v", Fatal(err))
 			c.fail(w, "failed generating ipxe", http.StatusInternalServerError)
