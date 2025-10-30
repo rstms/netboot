@@ -80,6 +80,7 @@ type HostCache struct {
 	whitelistCommand  string
 	isoKeys           map[string]string
 	isoKeyLifetime    int
+	isoMode           map[string]string
 	whitelistLifetime int
 }
 
@@ -119,6 +120,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		whitelistCommand:  ViperGetString(prefix + "whitelist_command"),
 		whitelistLifetime: ViperGetInt(prefix + "whitelist_lifetime"),
 		isoKeys:           make(map[string]string),
+		isoMode:           make(map[string]string),
 		isoKeyLifetime:    ViperGetInt(prefix + "iso_key_lifetime"),
 	}
 	if !IsDir(c.ipxeDir) {
@@ -410,20 +412,30 @@ func (c *HostCache) ISOHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	netbootIso := filepath.Join(c.ipxeDir, isoFile)
-
-	// for openbsd, return the MAC.boot ISO file
-	bootFile := filepath.Join(c.ipxeDir, mac+".boot")
-	if IsFile(bootFile) {
-		netbootIso = bootFile
+	var responseFile string
+	mode, ok := c.isoMode[isoKey]
+	if !ok {
+		mode = "iso"
+	}
+	switch mode {
+	case "iso":
+		responseFile = filepath.Join(c.ipxeDir, mac+".iso")
+	case "img":
+		responseFile = filepath.Join(c.ipxeDir, mac+".img")
+	case "boot":
+		responseFile = filepath.Join(c.ipxeDir, mac+".boot")
+	default:
+		Warning("unexpected iso mode: %s", mode)
+		c.fail(w, "not found", http.StatusBadRequest)
+		return
 	}
 
-	if !IsFile(netbootIso) {
-		Warning("iso request file not found: %s", netbootIso)
+	if !IsFile(responseFile) {
+		Warning("iso request file not found: %s", responseFile)
 		c.fail(w, "not found", http.StatusNotFound)
 		return
 	}
-	http.ServeFile(w, r, netbootIso)
+	http.ServeFile(w, r, responseFile)
 }
 
 func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -1161,7 +1173,9 @@ func (c *HostCache) AddIsoKeyHandlerTLS(w http.ResponseWriter, r *http.Request) 
 	}
 	key := r.PathValue("key")
 	mac := normalizeMAC(r.PathValue("mac"))
+	mode := r.PathValue("mode")
 	c.isoKeys[key] = mac
+	c.isoMode[key] = mode
 	go func() {
 		timeout := time.NewTimer(time.Duration(uint64(c.isoKeyLifetime)) * time.Second)
 		<-timeout.C
@@ -1192,5 +1206,6 @@ func (c *HostCache) deleteIsoKey(key string) (string, bool) {
 		return "key not present", false
 	}
 	delete(c.isoKeys, key)
+	delete(c.isoMode, key)
 	return "key deleted", true
 }

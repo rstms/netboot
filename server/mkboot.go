@@ -170,9 +170,9 @@ func (m *MkBoot) mkbootOpenBSD() error {
 		return Fatal(err)
 	}
 
-	// unzip template customized openbsd netboot iso: /ipxe/MAC.boot
-	// MAC.boot is downloaded with sanboot by the ISO
-	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.iso.gz", m.Config.Version, m.Config.Arch))
+	// unzip template customized openbsd netboot img to /ipxe/MAC.boot
+	// autoexec in iso image will sanboot /san/MAC.boot
+	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.img.gz", m.Config.Version, m.Config.Arch))
 	dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
 	err = files.UnzipFileFromFS(dstBoot, srcBoot, template.Ipxe)
 	if err != nil {
@@ -191,14 +191,6 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	}
 	*m.BootFiles = append(*m.BootFiles, dstGdl)
 
-	//injectBootFiles := true
-	// set ImageSource to "openbsd" to use the prebuilt openbsd image instead
-	// of the netboot.xyz.gz IPXE loader image -- for use with Vultr && alpine-loader
-	//switch m.Config.ImageSource {
-	//case "openbsd":
-	//srcImage := fmt.Sprintf("openbsd-%s-%s.img.gz", m.Config.Version, m.Config.Arch)
-	//}
-
 	srcImage := "netboot.xyz.img.gz"
 	injectBootFiles := true
 	err = m.buildIMG("openbsd", srcImage, injectBootFiles)
@@ -210,6 +202,9 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	if err != nil {
 		return Fatal(err)
 	}
+
+	log.Printf("mkbootOpenbsd: boot=%s\n", dstBoot)
+
 	return nil
 }
 

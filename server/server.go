@@ -173,7 +173,7 @@ func (s *NetbootServer) Start() error {
 	httpsMux.HandleFunc("GET /api/address/{mac}/", s.hosts.HostAddressQueryHandlerTLS)
 	httpsMux.HandleFunc("PUT /api/host/", s.hosts.AddHostHandlerTLS)
 	httpsMux.HandleFunc("PUT /api/whitelist/{ip}/", s.hosts.AddWhitelistAddressHandlerTLS)
-	httpsMux.HandleFunc("PUT /api/isokey/{key}/{mac}/", s.hosts.AddIsoKeyHandlerTLS)
+	httpsMux.HandleFunc("PUT /api/isokey/{key}/{mac}/{mode}/", s.hosts.AddIsoKeyHandlerTLS)
 	httpsMux.HandleFunc("PUT /api/status/{status}/{mac}/{ip}/", s.hosts.PutHostStatusHandlerTLS)
 	httpsMux.HandleFunc("GET /api/set_status/{status}/{mac}/{ip}/", s.hosts.GetHostSetStatusHandlerTLS)
 	httpsMux.HandleFunc("PUT /api/bootstrap/{id}/{mac}/{ip}/", s.hosts.PutBootstrapHandlerTLS)
