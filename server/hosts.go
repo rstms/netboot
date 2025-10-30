@@ -69,6 +69,7 @@ type HostCache struct {
 	ipxeDir           string
 	distDir           string
 	cache             map[string]message.HostState
+	bootstrapCache    map[string]message.HostState
 	httpPort          int
 	httpsPort         int
 	proxy             bool
@@ -631,6 +632,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 			Mirror:      mirror,
 			BootstrapId: config.BootstrapId,
 		}
+		c.bootstrapCache[config.BootstrapId] = message.HostState{BootstrapId: config.BootstrapId, State: "init"}
 	}
 
 	if !MAC_PATTERN.MatchString(config.Address) {
@@ -898,19 +900,14 @@ func (c *HostCache) PutBootstrapHandlerTLS(w http.ResponseWriter, r *http.Reques
 	bootstrapId := r.PathValue("id")
 	address := normalizeMAC(r.PathValue("mac"))
 	ip := r.PathValue("ip")
-
-	for _, hostState := range c.cache {
-		if hostState.BootstrapId == bootstrapId {
-			hostState.MAC = address
-			hostState.IP = ip
-			hostState.State = "bootstrapped"
-			log.Printf("Received bootstrap report: MAC=%s IP=%s ID=%s\n", address, ip, bootstrapId)
-			c.respond(w, "BootstrapResponse", message.NetbootResponse{Message: "acknowleded bootstrap"})
-			return
-		}
+	log.Printf("Received bootstrap report: ID=%s MAC=%s IP=%s ID=%s\n", bootstrapId, address, ip)
+	c.bootstrapCache[bootstrapId] = message.HostState{
+		MAC:         address,
+		IP:          ip,
+		State:       "bootstrapped",
+		BootstrapId: bootstrapId,
 	}
-	Warning("netboot bootstrap host not found: id=%s MAC=%s IP=%s", bootstrapId, address, ip)
-	c.fail(w, "host not found", http.StatusNotFound)
+	c.respond(w, "BootstrapResponse", message.NetbootResponse{Message: "bootstrap acknowleded"})
 }
 
 func (c *HostCache) GetHostSetStatusHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -945,19 +942,18 @@ func (c *HostCache) HostAddressQueryHandlerTLS(w http.ResponseWriter, r *http.Re
 	if !c.requireClientCert(w, r) {
 		return
 	}
-	segments := strings.Split(r.URL.Path, "/")
-	if len(segments) > 3 {
-		address := segments[3]
-		var hostState message.HostState
-		hostState, ok := c.cache[address]
+
+	address := r.PathValue("mac")
+	hostState, ok := c.bootstrapCache[address]
+	if !ok {
+		hostState, ok = c.cache[normalizeMAC(address)]
 		if !ok {
 			hostState = message.HostState{MAC: address}
 		}
-		log.Printf("HostAddressQueryHandler returning: %s\n", FormatJSON(hostState))
-		c.respond(w, "HostAddressResponse", hostState)
-		return
 	}
-	c.fail(w, "invalid path", http.StatusBadRequest)
+	log.Printf("HostAddressQueryHandler returning: %s\n", FormatJSON(hostState))
+	c.respond(w, "HostAddressResponse", hostState)
+	return
 }
 
 func (c *HostCache) hostAddresses() ([]string, error) {

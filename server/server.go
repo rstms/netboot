@@ -170,7 +170,7 @@ func (s *NetbootServer) Start() error {
 	httpsMux.HandleFunc("GET /iso/{key}/", s.hosts.ISOHandlerTLS)
 	httpsMux.HandleFunc("GET /netboot.png", s.hosts.PNGHandlerTLS)
 	httpsMux.HandleFunc("GET /api/hosts/", s.hosts.ListHostsHandlerTLS)
-	httpsMux.HandleFunc("GET /api/address/", s.hosts.HostAddressQueryHandlerTLS)
+	httpsMux.HandleFunc("GET /api/address/{mac}/", s.hosts.HostAddressQueryHandlerTLS)
 	httpsMux.HandleFunc("PUT /api/host/", s.hosts.AddHostHandlerTLS)
 	httpsMux.HandleFunc("PUT /api/whitelist/{ip}/", s.hosts.AddWhitelistAddressHandlerTLS)
 	httpsMux.HandleFunc("PUT /api/isokey/{key}/{mac}/", s.hosts.AddIsoKeyHandlerTLS)
