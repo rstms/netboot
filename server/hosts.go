@@ -908,10 +908,19 @@ func (c *HostCache) PutBootstrapHandlerTLS(w http.ResponseWriter, r *http.Reques
 	c.fail(w, "host not found", http.StatusNotFound)
 }
 
+func (c *HostCache) GetHostSetStatusHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
+	c.updateHostStatus(w, r)
+}
+
 func (c *HostCache) PutHostStatusHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if !c.requireClientCert(w, r) {
 		return
 	}
+	c.updateHostStatus(w, r)
+}
+
+func (c *HostCache) updateHostStatus(w http.ResponseWriter, r *http.Request) {
 	status := r.PathValue("status")
 	address := normalizeMAC(r.PathValue("mac"))
 	ip := r.PathValue("ip")

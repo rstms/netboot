@@ -3,12 +3,14 @@
 # alpine rc.netboot
 # included in MAC.apkovl.tgz as /etc/local.d/auto-setup-alpine.start
 
-echo >/dev/console "Executing $0"
+exec >/dev/console 2>&1
+
+echo "Executing $0"
 
 console_prompt() {
-    echo >/dev/console "$@"
+    echo "$@"
     if [ -n "$_debug" ]; then
-	echo >/dev/console "[enter to continue]"
+	echo "[enter to continue]"
 	read </dev/console response
     fi
 }
@@ -24,20 +26,12 @@ on_exit() {
 }
 trap on_exit EXIT 
 
-egress_ip() {
-    ifconfig $1 | awk '/[[:space:]]inet addr:/{gsub(/^.*:/, "", $2); print $2}'
-}
-
-egress_mac() {
-    ifconfig $1 | awk '/[[:space:]]HWaddr[[:space:]]/{print $5}' | tr -d ':' | tr 'A-Z' 'a-z'
-}
-
 mkdir /cdrom
-echo >/dev/console "Attempting /dev/cdrom ISO9660 mount..."
+echo "Attempting /dev/cdrom ISO9660 mount..."
 if mount -t iso9660 -o ro /dev/cdrom /cdrom ; then
     mount | grep /cdrom
 else
-    echo >/dev/console "CDROM mount failed, trying /dev/sda as FAT filesystem..."
+    echo "CDROM mount failed, trying /dev/sda as FAT filesystem..."
     apk add mtools
     if minfo -i /dev/${_root} | grep SYSLINUX; then
 	mcopy -i /dev/${_root} ::keymaster.pem /cdrom
@@ -50,12 +44,19 @@ fi
 
 . /cdrom/netboot.env
 
+mac_addr=$(ifconfig $_egress | awk '/[[:space:]]HWaddr[[:space:]]/{print $5}' | tr -d ':' | tr 'A-Z' 'a-z')
+echo "mac_address=$mac_addr"
+
+ip_addr=$(ifconfig $_egress | awk '/[[:space:]]inet addr:/{gsub(/^.*:/, "", $2); print $2}')
+echo "ip_address=$ip_addr"
+
 # install curl
 apk add curl
 
 if [ "$_mac" == "000000000000" ]; then
-    console_prompt "Sending bootstrap address report"
-    curl -L -X PUT -o /dev/console ${_certs} "${_url}/api/bootstrap/${_bootstrap_id}/$(egress_mac ${_egress})/$(egress_ip ${_egress})"
+    report_url="${_url}/api/bootstrap/${_bootstrap_id}/${mac_addr}/${ip_addr}/"
+    console_prompt "Sending $report_url"
+    curl -L -X PUT -o /dev/console ${_certs} "$report_url"
     console_prompt "shutdown in 5 seconds..."
     sleep 5
     /sbin/poweroff
@@ -64,13 +65,14 @@ fi
 
 if [ -n "$_image_load" ]; then
     console_prompt "loading netboot.img"
-    curl -Ls -o netboot.img ${_certs} ${_url}/ipxe/$(egress_mac ${_egress}).img
+    curl -Ls -o netboot.img ${_certs} ${_url}/ipxe/${mac_addr}.img
     # write image to hdd
     #console_prompt "writing netboot.img to /dev/${_image_load}"
     #dd if=netboot.img of=/dev/${_image_load}
-    sh </dev/console >/dev/console 2>&1
-    console_prompt "reporting image loaded..."
-    curl -L -X PUT -o /dev/console ${_certs} "${_url}/api/status/imaged/$(egress_mac ${_egress})/$(egress_ip ${_egress})"
+    sh </dev/console  2>&1
+    report_url="${_url}/api/status/imaged/${mac_addr}/${ip_addr}/"
+    console_prompt "Sending $report_url"
+    curl -L -X PUT -o /dev/console ${_certs} "$report_url"
     console_prompt "shutdown in 5 seconds..."
     sleep 5
     /sbin/poweroff
@@ -78,20 +80,22 @@ if [ -n "$_image_load" ]; then
 fi
 
 # send 'init' host status 
-curl -L -X PUT -o /dev/console ${_certs} "${_url}/api/status/init/$(egress_mac ${_egress})/$(egress_ip ${_egress})"
+report_url="${_url}/api/status/init/${mac_addr}/${ip_addr}/"
+console_prompt "Sending $report_url"
+curl -L -X PUT -o /dev/console ${_certs} "$report_url"
 
 # download /ipxe/MAC.postinstall as /postinstall 
-curl ${_certs} ${_url}/ipxe/$(egress_mac ${_egress}).postinstall -o /postinstall
+curl ${_certs} ${_url}/ipxe/${mac_addr}.postinstall -o /postinstall
 
 # run only once
 rm -f /etc/local.d/auto-setup-alpine.start
 
-sh </dev/console >/dev/console 2>&1 /postinstall
+sh </dev/console  2>&1 /postinstall
 postinstall_exit=$?
 
 if [ $postinstall_exit != 0 ]; then
-    echo >/dev/console "rc.netboot: /postinstall failed with exit code $postinstall_exit"
-    echo >/dev/console "rebooting in 5 seconds..."
+    echo "rc.netboot: /postinstall failed with exit code $postinstall_exit"
+    echo "rebooting in 5 seconds..."
     sleep 5
 fi
 
