@@ -225,11 +225,13 @@ func CreateNetbootISO(dstImage, srcImage, efiImage string, rootFiles []string) e
 	}
 	defer os.RemoveAll(tmpDir)
 
-	efiImageSize, err := fileSize(efiImage)
-	if err != nil {
-		return Fatal(err)
+	if efiImage != "" {
+		efiImageSize, err := fileSize(efiImage)
+		if err != nil {
+			return Fatal(err)
+		}
+		outputIsoSize += efiImageSize
 	}
-	outputIsoSize += efiImageSize
 
 	// open the source ISO filesystem
 	srcFS, err := openImageFS(srcImage)
@@ -269,6 +271,7 @@ func CreateNetbootISO(dstImage, srcImage, efiImage string, rootFiles []string) e
 	}
 
 	var elToritoBootFile string
+	var elToritoLoadSize uint16
 	// copy src ISO files to dest ISO
 	for _, file := range isoFiles {
 		log.Printf("isoFile: %s\n", file)
@@ -282,10 +285,12 @@ func CreateNetbootISO(dstImage, srcImage, efiImage string, rootFiles []string) e
 			case "cdbr":
 				// use presence of cdbr to detect the OpenBSD installer
 				elToritoBootFile = pathname
+				elToritoLoadSize = 2
 				// don't write the EFI image for OpenBSD
 				efiImage = ""
 			case "isolinux.bin":
 				elToritoBootFile = pathname
+				elToritoLoadSize = 4
 			}
 			log.Printf("copying: %s\n", file)
 			err = copyFileInterImage(dstFS, file, srcFS, file)
@@ -330,12 +335,13 @@ func CreateNetbootISO(dstImage, srcImage, efiImage string, rootFiles []string) e
 	elTorito := iso9660.ElTorito{Entries: []*iso9660.ElToritoEntry{}}
 
 	if elToritoBootFile != "" {
+		log.Printf("writing elTorito BIOS boot file: %s\n", elToritoBootFile)
 		entry := iso9660.ElToritoEntry{
 			Platform:  iso9660.BIOS,
 			Emulation: iso9660.NoEmulation,
 			BootFile:  elToritoBootFile,
 			BootTable: true,
-			LoadSize:  4,
+			LoadSize:  elToritoLoadSize,
 		}
 		elTorito.Entries = append(elTorito.Entries, &entry)
 	}
@@ -359,8 +365,8 @@ func CreateNetbootISO(dstImage, srcImage, efiImage string, rootFiles []string) e
 		VolumeIdentifier: srcImageName,
 		RockRidge:        true,
 		ElTorito:         &elTorito,
+		DeepDirectories:  true,
 	}
-	//DeepDirectories:  true,
 
 	/*
 		iso9660.ElTorito{

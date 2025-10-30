@@ -173,14 +173,8 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	// unzip template customized openbsd netboot iso: /ipxe/MAC.boot
 	// MAC.boot is downloaded with sanboot by the ISO
 	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.iso.gz", m.Config.Version, m.Config.Arch))
-	unzippedBoot := filepath.Join(m.TempDir, "openbsd.iso")
-	err = files.UnzipFileFromFS(unzippedBoot, srcBoot, template.Ipxe)
-	if err != nil {
-		return Fatal(err)
-	}
 	dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
-	// add bootfiles to openbsd iso and write as /ipxe/MAC.boot
-	err = bootiso.CreateNetbootISO(dstBoot, unzippedBoot, "", *m.BootFiles)
+	err = files.UnzipFileFromFS(dstBoot, srcBoot, template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
