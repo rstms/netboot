@@ -27,6 +27,7 @@ echo sanboot=${sanboot}
 echo mac=${net0/mac}
 echo ip=${net0/ip}
 
+sanhook --drive 0x81 ${sanboot}/san/${net0/mac}.iso
 sanboot ${sanboot}/san/${net0/mac}.boot
 
 exit 0
