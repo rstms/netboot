@@ -172,7 +172,7 @@ func (m *MkBoot) mkbootOpenBSD() error {
 
 	// unzip template customized openbsd netboot img to /ipxe/MAC.boot
 	// autoexec in iso image will sanboot /san/MAC.boot
-	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.img.gz", m.Config.Version, m.Config.Arch))
+	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.iso.gz", m.Config.Version, m.Config.Arch))
 	dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
 	err = files.UnzipFileFromFS(dstBoot, srcBoot, template.Ipxe)
 	if err != nil {
