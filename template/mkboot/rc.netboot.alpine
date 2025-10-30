@@ -61,7 +61,9 @@ apk add curl
 if [ "$_mac" == "000000000000" ]; then
     report_url="${_url}/api/bootstrap/${_bootstrap_id}/${mac_addr}/${ip_addr}/"
     console_prompt "Sending $report_url"
+    sleep 15
     curl -v -L -X PUT -o /dev/console ${_certs} "$report_url"
+    sleep 60
     console_prompt "shutdown in 5 seconds..."
     sleep 5
     /sbin/poweroff
