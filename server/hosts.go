@@ -32,6 +32,8 @@ const DEFAULT_ALPINE_MIRROR = "https://dl-cdn.alpinelinux.org"
 const DEFAULT_ISO_KEY_LIFETIME = 60
 const DEFAULT_WHITELIST_LIFETIME = 60
 
+const BOOTSTRAP_MAC_ADDRESS = "000000000000"
+
 type Host struct {
 	Address string `json:"address"`
 }
@@ -614,6 +616,22 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if config.Address == BOOTSTRAP_MAC_ADDRESS {
+		version, arch, mirror, err := DefaultDist("alpine")
+		if err != nil {
+			Warning("%v", Fatal(err))
+			c.fail(w, "failed generating bootstrap iso", http.StatusInternalServerError)
+			return
+		}
+		config = message.NetbootConfig{
+			Address: BOOTSTRAP_MAC_ADDRESS,
+			OS:      "alpine",
+			Version: version,
+			Arch:    arch,
+			Mirror:  mirror,
+		}
+	}
+
 	if !MAC_PATTERN.MatchString(config.Address) {
 		c.fail(w, "invalid MAC address", http.StatusBadRequest)
 		return
@@ -707,20 +725,23 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// installer response file: /ipxe/MAC.response
-	responsePathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.response", config.Address))
-	decodedBytes, err := base64.StdEncoding.DecodeString(config.Response)
-	if err != nil {
-		Warning("%v", Fatal(err))
-		c.fail(w, "failed decoding response file", http.StatusInternalServerError)
-		return
-	}
-	log.Printf("addHostHandler: response=%s\n", responsePathname)
-	err = os.WriteFile(responsePathname, decodedBytes, 0660)
-	if err != nil {
-		Warning("%v", Fatal(err))
-		c.fail(w, "failed writing response file", http.StatusInternalServerError)
-		return
+	if config.Response != "" {
+		// installer response file: /ipxe/MAC.response
+		responsePathname := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.response", config.Address))
+
+		decodedBytes, err := base64.StdEncoding.DecodeString(config.Response)
+		if err != nil {
+			Warning("%v", Fatal(err))
+			c.fail(w, "failed decoding response file", http.StatusInternalServerError)
+			return
+		}
+		log.Printf("addHostHandler: response=%s\n", responsePathname)
+		err = os.WriteFile(responsePathname, decodedBytes, 0660)
+		if err != nil {
+			Warning("%v", Fatal(err))
+			c.fail(w, "failed writing response file", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// disk partitioning template: /ipxe/MAC.disk
@@ -865,37 +886,45 @@ func (c *HostCache) deleteAddressFiles(inAddress string, w http.ResponseWriter) 
 	return
 }
 
-func (c *HostCache) HostBootedHandlerTLS(w http.ResponseWriter, r *http.Request) {
+func (c *HostCache) PutBootstrapHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if !c.requireClientCert(w, r) {
 		return
 	}
+	bootstrapId := r.PathValue("id")
 	address := normalizeMAC(r.PathValue("mac"))
 	ip := r.PathValue("ip")
-	c.handleNetbootReport(w, r, address, ip, "booted")
+
+	for _, hostState := range c.cache {
+		if hostState.BootstrapId == bootstrapId {
+			hostState.MAC = address
+			hostState.IP = ip
+			hostState.State = "bootstrapped"
+			log.Printf("Received bootstrap report: MAC=%s IP=%s ID=%s\n", address, ip, bootstrapId)
+			c.respond(w, "BootstrapResponse", message.NetbootResponse{Message: "acknowleded bootstrap"})
+			return
+		}
+	}
+	Warning("netboot bootstrap host not found: id=%s MAC=%s IP=%s", bootstrapId, address, ip)
+	c.fail(w, "host not found", http.StatusNotFound)
 }
 
-func (c *HostCache) HostInstalledHandlerTLS(w http.ResponseWriter, r *http.Request) {
-	c.requireClientCert(w, r)
+func (c *HostCache) PutHostStatusHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	status := r.PathValue("status")
 	address := normalizeMAC(r.PathValue("mac"))
 	ip := r.PathValue("ip")
-	c.handleNetbootReport(w, r, address, ip, "installed")
-}
 
-func (c *HostCache) HostImagedHandlerTLS(w http.ResponseWriter, r *http.Request) {
-	c.requireClientCert(w, r)
-	address := normalizeMAC(r.PathValue("mac"))
-	c.handleNetbootReport(w, r, address, "", "imaged")
-}
-
-func (c *HostCache) handleNetbootReport(w http.ResponseWriter, r *http.Request, address, ip, state string) {
 	if address == "" {
 		Warning("netboot status report missing address: %s", address)
 		c.fail(w, "invalid path", http.StatusBadRequest)
 		return
 	}
-	log.Printf("Received netboot report: MAC=%s IP=%s State=%s\n", address, ip, state)
-	c.cache[address] = message.HostState{MAC: address, IP: ip, State: state}
-	c.respond(w, "BootReportResponse", message.NetbootResponse{Message: "acknowleded netboot state: " + state})
+
+	log.Printf("Received netboot status: MAC=%s IP=%s Status=%s\n", address, ip, status)
+	c.cache[address] = message.HostState{MAC: address, IP: ip, State: status}
+	c.respond(w, "BootReportResponse", message.NetbootResponse{Message: "acknowleded status: " + status})
 }
 
 func (c *HostCache) HostAddressQueryHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -997,8 +1026,11 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	env := make(map[string]string)
 	env["_url"] = url
 	env["_mac"] = config.Address
+	env["_egress"] = config.EgressInterface
+	env["_root"] = config.RootDevice
 	env["_certs"] = "'--cacert /cdrom/keymaster.pem --cert /cdrom/netboot.pem --key /cdrom/netboot.key'"
 	env["_image_load"] = config.AlpineLoader
+	env["_bootstrap_id"] = config.BootstrapId
 	if config.Debug {
 		env["_debug"] = "1"
 	} else {
@@ -1029,9 +1061,8 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	}
 	bootFiles = append(bootFiles, netbootEnvFile)
 
-	// extract tarball postinstall to temp dir for debian mkboot
-	// NOTE: intentionally not added to bootFiles
-	postinstall := filepath.Join(tempDir, "postinstall")
+	// extract tarball postinstall to ipxe/MAC.postinstall
+	postinstall := filepath.Join(c.ipxeDir, fmt.Sprintf("%s.postinstall", config.Address))
 	err = files.ExtractTarballFile(postinstall, "postinstall", tarball)
 	if err != nil {
 		return "", []string{}, Fatal(err)

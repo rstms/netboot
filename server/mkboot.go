@@ -240,8 +240,7 @@ func (m *MkBoot) mkbootDebian() error {
 		return Fatal(err)
 	}
 
-	// stage template/mkboot/rc.netboot.debian: /ipxe/MAC.postinstall
-	// NOTE: this IS NOT /postinstall from package.tgz (see mkbootAlpine)
+	// for debian, overwrite /ipxe/MAC.postinstall with template/mkboot/rc.netboot.debian
 	postinstall := filepath.Join(m.IpxeDir, m.Config.Address+".postinstall")
 	log.Printf("mkbootDebian: postinstall=%s\n", postinstall)
 	err = files.CopyFileFromFS(postinstall, "mkboot/rc.netboot.debian", template.Mkboot)
@@ -330,17 +329,6 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	dstModloop := filepath.Join(m.IpxeDir, m.Config.Address+".modloop")
 	log.Printf("mkbootAlpine: modloop=%s\n", dstModloop)
 	err = files.CopyFileFromFS(dstModloop, srcModloop, template.Dist)
-	if err != nil {
-		return Fatal(err)
-	}
-
-	// stage postinstall script: /ipxe/MAC.postinstall
-	// alpine rc.netboot downloads postinstall from the ipxe dir
-	// NOTE: this IS /postinstall from package.tgz (see mkbootDebian)
-	srcPostinstall := filepath.Join(m.TempDir, "postinstall")
-	dstPostinstall := filepath.Join(m.IpxeDir, m.Config.Address+".postinstall")
-	log.Printf("mkbootAlpine: postinstall=%s\n", dstPostinstall)
-	err = files.CopyFile(dstPostinstall, srcPostinstall)
 	if err != nil {
 		return Fatal(err)
 	}
