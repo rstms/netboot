@@ -104,6 +104,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		httpsPort:    httpsPort,
 		proxy:        proxyEnabled,
 		cache:        make(map[string]message.HostState),
+		bootstrapCache:        make(map[string]message.HostState),
 		ipxeDir:      filepath.Join(dir, "ipxe"),
 		distDir:      filepath.Join(dir, "dist"),
 		noDeleteIpxe: ViperGetBool(prefix + "no_delete_ipxe"),
