@@ -901,7 +901,7 @@ func (c *HostCache) PutBootstrapHandlerTLS(w http.ResponseWriter, r *http.Reques
 	bootstrapId := r.PathValue("id")
 	address := normalizeMAC(r.PathValue("mac"))
 	ip := r.PathValue("ip")
-	log.Printf("Received bootstrap report: ID=%s MAC=%s IP=%s ID=%s\n", bootstrapId, address, ip)
+	log.Printf("Received bootstrap report: ID=%s MAC=%s IP=%s\n", bootstrapId, address, ip)
 	c.bootstrapCache[bootstrapId] = message.HostState{
 		MAC:         address,
 		IP:          ip,
