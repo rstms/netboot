@@ -430,6 +430,8 @@ func (c *HostCache) ISOHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("Vultr ISO request: key=%s file=%s\n", isoKey, responseFile)
+
 	if !IsFile(responseFile) {
 		Warning("iso request file not found: %s", responseFile)
 		c.fail(w, "not found", http.StatusNotFound)
