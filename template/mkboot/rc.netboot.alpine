@@ -55,6 +55,8 @@ echo "mac_address=$mac_addr"
 ip_addr=$(ifconfig $_egress | awk '/[[:space:]]inet addr:/{gsub(/^.*:/, "", $2); print $2}')
 echo "ip_address=$ip_addr"
 
+echo "bootstrap_id=$_bootstrap_id"
+
 # install curl
 apk add curl
 
