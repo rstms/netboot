@@ -7,6 +7,8 @@ exec >/dev/console 2>&1
 
 echo "Executing $0"
 
+_debug=1
+
 console_prompt() {
     echo "$@"
     if [ -n "$_debug" ]; then
@@ -18,6 +20,7 @@ console_prompt() {
 console_prompt "rc.netboot.alpine"
 
 on_exit() {
+    console_prompt "Exiting $0"
     if [ -n "$_shutdown" ]; then
 	/sbin/poweroff
     else
@@ -56,7 +59,7 @@ apk add curl
 if [ "$_mac" == "000000000000" ]; then
     report_url="${_url}/api/bootstrap/${_bootstrap_id}/${mac_addr}/${ip_addr}/"
     console_prompt "Sending $report_url"
-    curl -L -X PUT -o /dev/console ${_certs} "$report_url"
+    curl -v -L -X PUT -o /dev/console ${_certs} "$report_url"
     console_prompt "shutdown in 5 seconds..."
     sleep 5
     /sbin/poweroff
