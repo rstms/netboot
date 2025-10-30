@@ -172,13 +172,15 @@ func (m *MkBoot) mkbootOpenBSD() error {
 
 	// unzip template customized openbsd netboot iso: /ipxe/MAC.boot
 	// MAC.boot is downloaded with sanboot by the ISO
-	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.iso.gz", m.Config.Version, m.Config.Arch))
-	dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
-	log.Printf("mkbootOpenbsd: boot=%s\n", dstBoot)
-	err = files.UnzipFileFromFS(dstBoot, srcBoot, template.Ipxe)
-	if err != nil {
-		return Fatal(err)
-	}
+	/*
+		srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.iso.gz", m.Config.Version, m.Config.Arch))
+		dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
+		log.Printf("mkbootOpenbsd: boot=%s\n", dstBoot)
+		err = files.UnzipFileFromFS(dstBoot, srcBoot, template.Ipxe)
+		if err != nil {
+			return Fatal(err)
+		}
+	*/
 
 	// add gdl??.tgz to netboot iso bootfiles
 	tag := strings.ReplaceAll(m.Config.Version, ".", "")
@@ -191,18 +193,23 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	}
 	*m.BootFiles = append(*m.BootFiles, dstGdl)
 
-	srcImage := "netboot.xyz.img.gz"
-	injectBootFiles := true
-
+	//srcImage := "netboot.xyz.img.gz"
+	//injectBootFiles := true
 	// set ImageSource to "openbsd" to use the prebuilt openbsd image instead
 	// of the netboot.xyz.gz IPXE loader image -- for use with Vultr && alpine-loader
-	switch m.Config.ImageSource {
-	case "openbsd":
-		srcImage = fmt.Sprintf("openbsd-%s-%s.img.gz", m.Config.Version, m.Config.Arch)
-		injectBootFiles = false
+	//switch m.Config.ImageSource {
+	//case "openbsd":
+
+	srcImage := fmt.Sprintf("openbsd-%s-%s.img.gz", m.Config.Version, m.Config.Arch)
+	injectBootFiles := true
+	err = m.buildIMG("openbsd", srcImage, injectBootFiles)
+	if err != nil {
+		return Fatal(err)
 	}
 
-	err = m.buildIMG("openbsd", srcImage, injectBootFiles)
+	srcBoot := filepath.Join(m.IpxeDir, m.Config.Address+".img")
+	dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
+	err = files.CopyFile(dstBoot, srcBoot)
 	if err != nil {
 		return Fatal(err)
 	}

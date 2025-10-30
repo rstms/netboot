@@ -29,8 +29,8 @@ const DEFAULT_DEBIAN_MIRROR = "http://ftp.us.debian.org"
 const DEFAULT_DEBIAN_SECURITY_MIRROR = "http://security.debian.org"
 const DEFAULT_OPENBSD_MIRROR = "http://mirrors.mit.edu"
 const DEFAULT_ALPINE_MIRROR = "https://dl-cdn.alpinelinux.org"
-const DEFAULT_ISO_KEY_LIFETIME = 60
-const DEFAULT_WHITELIST_LIFETIME = 60
+const DEFAULT_ISO_KEY_LIFETIME = 300
+const DEFAULT_WHITELIST_LIFETIME = 300
 
 const BOOTSTRAP_MAC_ADDRESS = "000000000000"
 
