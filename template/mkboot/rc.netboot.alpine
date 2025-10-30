@@ -3,11 +3,14 @@
 # alpine rc.netboot
 # included in MAC.apkovl.tgz as /etc/local.d/auto-setup-alpine.start
 
+_debug=
+
 set -ue 
 
 exec >/dev/console 2>&1
 
 echo "Executing $0"
+
 
 console_prompt() {
     echo "$@"
