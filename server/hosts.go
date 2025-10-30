@@ -624,11 +624,12 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		config = message.NetbootConfig{
-			Address: BOOTSTRAP_MAC_ADDRESS,
-			OS:      "alpine",
-			Version: version,
-			Arch:    arch,
-			Mirror:  mirror,
+			Address:     BOOTSTRAP_MAC_ADDRESS,
+			OS:          "alpine",
+			Version:     version,
+			Arch:        arch,
+			Mirror:      mirror,
+			BootstrapId: config.BootstrapId,
 		}
 	}
 
