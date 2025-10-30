@@ -334,6 +334,8 @@ func CreateNetbootISO(dstImage, srcImage, efiImage string, rootFiles []string) e
 			Platform:  iso9660.BIOS,
 			Emulation: iso9660.NoEmulation,
 			BootFile:  elToritoBootFile,
+			BootTable: true,
+			LoadSize:  4,
 		}
 		elTorito.Entries = append(elTorito.Entries, &entry)
 	}
@@ -356,9 +358,9 @@ func CreateNetbootISO(dstImage, srcImage, efiImage string, rootFiles []string) e
 	options := iso9660.FinalizeOptions{
 		VolumeIdentifier: srcImageName,
 		RockRidge:        true,
-		DeepDirectories:  true,
 		ElTorito:         &elTorito,
 	}
+	//DeepDirectories:  true,
 
 	/*
 		iso9660.ElTorito{
