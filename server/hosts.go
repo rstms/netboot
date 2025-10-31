@@ -1197,7 +1197,8 @@ func (c *HostCache) DeleteIsoKeyHandlerTLS(w http.ResponseWriter, r *http.Reques
 	key := r.PathValue("key")
 	msg, ok := c.deleteIsoKey(key)
 	if !ok {
-		c.respond(w, msg, message.NetbootResponse{Message: msg})
+		c.fail(w, msg, http.StatusNotFound)
+		return
 	}
 	c.respond(w, msg, message.NetbootResponse{Message: msg})
 }
