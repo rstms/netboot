@@ -368,7 +368,7 @@ func (c *HostCache) SanBootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch ext {
-	case "boot", "modloop", "apkovl.tar.gz", "iso":
+	case "boot", "modloop", "apkovl.tar.gz":
 		// IPXE sanboot command from the OpenBSD autoexec.ipxe
 		// FIXME: verify that this request follows a very recent client-cert validated request for MAC.iso from the same source
 		// it is possible that the ipxe client will be reusing the same session - see if we can set a cookie and check for it

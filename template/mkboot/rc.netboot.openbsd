@@ -109,8 +109,6 @@ mount_netboot_cdrom() {
 		echo "CDROM detected; mounting ISO9660 filesystem at /netboot_config"
 		mkdir -p /netboot_config
 		mount /dev/cd0c /netboot_config
-		ls -al /netboot_config
-		sleep 15
 	    fi
 	else 
 	    echo "cd0 device not detected"
