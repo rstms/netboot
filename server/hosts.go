@@ -215,7 +215,7 @@ func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, co
 func (c *HostCache) validateHttpRequest(w http.ResponseWriter, r *http.Request) bool {
 	// FIXME: source address filtering goes here
 	log.Printf("[%s] %s -> HTTP %s %s\n", c.Name, r.RemoteAddr, r.Method, r.URL.Path)
-	log.Printf("headers: %s\n", FormatJSON(r.Header))
+	//log.Printf("headers: %s\n", FormatJSON(r.Header))
 	return true
 }
 
