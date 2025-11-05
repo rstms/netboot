@@ -359,6 +359,7 @@ func (c *HostCache) checkPath(prefix string, w http.ResponseWriter, r *http.Requ
 	return normalizeMAC(mac), strings.ToLower(ext), true
 }
 
+// FIXME: implement high-performance sanboot request handler
 func (c *HostCache) SanBootHandler(w http.ResponseWriter, r *http.Request) {
 	if !c.validateHttpRequest(w, r) {
 		return
