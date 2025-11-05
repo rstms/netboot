@@ -29,8 +29,8 @@ const DEFAULT_DEBIAN_MIRROR = "http://ftp.us.debian.org"
 const DEFAULT_DEBIAN_SECURITY_MIRROR = "http://security.debian.org"
 const DEFAULT_OPENBSD_MIRROR = "http://mirrors.mit.edu"
 const DEFAULT_ALPINE_MIRROR = "https://dl-cdn.alpinelinux.org"
-const DEFAULT_ISO_KEY_LIFETIME = 300
-const DEFAULT_WHITELIST_LIFETIME = 300
+const DEFAULT_ISO_KEY_LIFETIME = 600
+const DEFAULT_WHITELIST_LIFETIME = 3600
 
 const BOOTSTRAP_MAC_ADDRESS = "000000000000"
 
@@ -215,6 +215,7 @@ func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, co
 func (c *HostCache) validateHttpRequest(w http.ResponseWriter, r *http.Request) bool {
 	// FIXME: source address filtering goes here
 	log.Printf("[%s] %s -> HTTP %s %s\n", c.Name, r.RemoteAddr, r.Method, r.URL.Path)
+	log.Printf("headers: %s\n", FormatJSON(r.Header))
 	return true
 }
 
