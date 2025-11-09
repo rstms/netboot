@@ -924,7 +924,7 @@ func (c *HostCache) PutBootstrapHandlerTLS(w http.ResponseWriter, r *http.Reques
 		State:       "bootstrapped",
 		BootstrapId: bootstrapId,
 	}
-	c.respond(w, "BootstrapResponse", message.NetbootResponse{Message: "bootstrap acknowleded"})
+	c.respond(w, "BootstrapResponse", message.NetbootResponse{Message: "bootstrap acknowledged"})
 }
 
 func (c *HostCache) GetHostSetStatusHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -952,7 +952,7 @@ func (c *HostCache) updateHostStatus(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Received netboot status: MAC=%s IP=%s Status=%s\n", address, ip, status)
 	c.cache[address] = message.HostState{MAC: address, IP: ip, State: status}
-	c.respond(w, "BootReportResponse", message.NetbootResponse{Message: "acknowleded status: " + status})
+	c.respond(w, "BootReportResponse", message.NetbootResponse{Message: "acknowledged status: " + status})
 }
 
 func (c *HostCache) HostAddressQueryHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -1112,7 +1112,7 @@ func (c *HostCache) ShutdownHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if !c.requireClientCert(w, r) {
 		return
 	}
-	c.respond(w, "ShutdownRequestReponse", message.NetbootResponse{Message: "shutdown request acknowleged"})
+	c.respond(w, "ShutdownRequestReponse", message.NetbootResponse{Message: "shutdown request acknowledged"})
 	InternalShutdownRequest <- struct{}{}
 }
 
