@@ -8,7 +8,7 @@ require (
 	github.com/rstms/cobra-daemon v0.0.17
 	github.com/rstms/console v0.0.3
 	github.com/rstms/ffs v0.0.7
-	github.com/rstms/go-common v0.2.51
+	github.com/rstms/go-common v0.2.60
 	github.com/rstms/iso-kit v0.0.0-20251006152227-dbce8dbec2af
 	github.com/rstms/systray v0.0.15
 	github.com/spf13/cobra v1.10.1
