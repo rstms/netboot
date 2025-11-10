@@ -181,6 +181,7 @@ func (s *NetbootServer) Start() error {
 	httpsMux.HandleFunc("DELETE /api/whitelist/{ip}/", s.hosts.DeleteWhitelistAddressHandlerTLS)
 	httpsMux.HandleFunc("DELETE /api/host/", s.hosts.DeleteHostHandlerTLS)
 	httpsMux.HandleFunc("POST /api/tarball/", s.hosts.UploadPackageHandlerTLS)
+	httpsMux.HandleFunc("POST /api/dist/", s.hosts.UploadDistFileHandlerTLS)
 	httpsMux.HandleFunc("POST /api/shutdown/", s.hosts.ShutdownHandlerTLS)
 
 	if s.proxy {

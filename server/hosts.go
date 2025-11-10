@@ -27,10 +27,11 @@ import (
 // mirrors used by netboot proxy feature
 const DEFAULT_DEBIAN_MIRROR = "http://ftp.us.debian.org"
 const DEFAULT_DEBIAN_SECURITY_MIRROR = "http://security.debian.org"
-const DEFAULT_OPENBSD_MIRROR = "http://mirrors.mit.edu"
+const DEFAULT_OPENBSD_MIRROR = "https://ftp.openbsd.org"
 const DEFAULT_ALPINE_MIRROR = "https://dl-cdn.alpinelinux.org"
 const DEFAULT_ISO_KEY_LIFETIME = 600
 const DEFAULT_WHITELIST_LIFETIME = 3600
+const DEFAULT_MAX_DIST_UPLOAD_MB = 1024
 
 const BOOTSTRAP_MAC_ADDRESS = "000000000000"
 
@@ -46,6 +47,8 @@ var ALPINE_VERSION_PATTERN = regexp.MustCompile(`([0-9][0-9]*)\.([0-9][0-9]*)\.(
 var APKOVL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa-f]{2})\.apkovl\.tar\.gz$`)
 
 var MAC_ISO_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa-f]{2})\.iso$`)
+
+var OPENBSD_DIST_UPLOAD_PATTERN = regexp.MustCompile(`pub/OpenBSD/\d\.\d/amd64/[[:word:].-]+`)
 
 const htmlPrefix = `
 <!DOCTYPE html>
@@ -82,6 +85,8 @@ type HostCache struct {
 	isoKeyLifetime    int
 	isoMode           map[string]string
 	whitelistLifetime int
+	distUploadDir     string
+	maxDistUploadMB   int64
 }
 
 func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*HostCache, error) {
@@ -91,12 +96,19 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		prefix = "server."
 	}
 
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, Fatal(err)
+	}
+
 	ViperSetDefault(prefix+"mirror.alpine", DEFAULT_ALPINE_MIRROR)
 	ViperSetDefault(prefix+"mirror.debian", DEFAULT_DEBIAN_MIRROR)
 	ViperSetDefault(prefix+"mirror.debian-security", DEFAULT_DEBIAN_SECURITY_MIRROR)
 	ViperSetDefault(prefix+"mirror.openbsd", DEFAULT_OPENBSD_MIRROR)
 	ViperSetDefault(prefix+"iso_key_lifetime", DEFAULT_ISO_KEY_LIFETIME)
 	ViperSetDefault(prefix+"whitelist_lifetime", DEFAULT_WHITELIST_LIFETIME)
+	ViperSetDefault(prefix+"dist_upload_dir", filepath.Join(homeDir, "dist"))
+	ViperSetDefault(prefix+"max_dist_upload_mb", int64(DEFAULT_MAX_DIST_UPLOAD_MB))
 
 	c := HostCache{
 		Name:           "netboot",
@@ -122,6 +134,8 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		isoKeys:           make(map[string]string),
 		isoMode:           make(map[string]string),
 		isoKeyLifetime:    ViperGetInt(prefix + "iso_key_lifetime"),
+		distUploadDir:     ViperGetString(prefix + "dist_upload_dir"),
+		maxDistUploadMB:   ViperGetInt64(prefix + "max_dist_upload_mb"),
 	}
 	if !IsDir(c.ipxeDir) {
 		err := os.MkdirAll(c.ipxeDir, 0700)
@@ -131,6 +145,12 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 	}
 	if !IsDir(c.distDir) {
 		err := os.MkdirAll(c.distDir, 0700)
+		if err != nil {
+			return nil, Fatal(err)
+		}
+	}
+	if !IsDir(c.distUploadDir) {
+		err := os.MkdirAll(c.distUploadDir, 0700)
 		if err != nil {
 			return nil, Fatal(err)
 		}
@@ -477,6 +497,12 @@ func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.R
 			return
 		}
 	}
+
+	// prioritize uploaded dist files
+	if c.CheckUploadCache(mirror, w, r) {
+		return
+	}
+
 	cacheRoot, err := os.OpenRoot(c.distDir)
 	if err != nil {
 		Warning("%v", Fatal(err))
@@ -514,6 +540,17 @@ func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.R
 		return
 	}
 	Warning("DownloadFileRoot returned no data for '%s'", r.URL.Path)
+}
+
+func (c *HostCache) CheckUploadCache(mirror string, w http.ResponseWriter, r *http.Request) bool {
+	filePath := strings.ReplaceAll(r.URL.Path, "/", string(filepath.Separator))
+	pathname := filepath.Join(c.distUploadDir, filePath)
+	if IsFile(pathname) {
+		log.Printf("returning uploaded dist file: %s", pathname)
+		http.ServeFile(w, r, pathname)
+		return true
+	}
+	return false
 }
 
 func (c *HostCache) DebianHandler(w http.ResponseWriter, r *http.Request) {
@@ -602,6 +639,48 @@ func (c *HostCache) UploadPackageHandlerTLS(w http.ResponseWriter, r *http.Reque
 	}
 
 	c.respond(w, "UploadResponse", message.NetbootResponse{Message: fmt.Sprintf("%v bytes written", fileBytes)})
+}
+
+func (c *HostCache) UploadDistFileHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+
+	err := r.ParseMultipartForm(c.maxDistUploadMB << 20) // limit file size
+	if err != nil {
+		log.Printf("UploadDistFile failed: %v", err)
+		c.fail(w, fmt.Sprintf("failed parsing form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	uploadFile, fileHeader, err := r.FormFile("uploadFile")
+	if err != nil {
+		c.fail(w, fmt.Sprintf("failed retreiving upload file: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer uploadFile.Close()
+
+	uploadFilename := fileHeader.Filename
+
+	switch {
+	case OPENBSD_DIST_UPLOAD_PATTERN.MatchString(uploadFilename):
+	default:
+		c.fail(w, fmt.Sprintf("illegal filename: %s", uploadFilename), http.StatusBadRequest)
+		return
+	}
+
+	distFile, err := os.Create(filepath.Join(c.distUploadDir, uploadFilename))
+	if err != nil {
+		c.fail(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer distFile.Close()
+	fileBytes, err := io.Copy(distFile, uploadFile)
+	if err != nil {
+		c.fail(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	c.respond(w, "DistUploadResponse", message.NetbootResponse{Message: fmt.Sprintf("%v bytes written", fileBytes)})
 }
 
 func (c *HostCache) mkURLs(r *http.Request) (string, string) {

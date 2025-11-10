@@ -40,6 +40,12 @@ openbsd-77-img = dist/openbsd/7.7/amd64/miniroot77.img
 openbsd-77-netboot-iso = ipxe/openbsd-7.7-amd64.iso.gz
 openbsd-77-netboot-img = ipxe/openbsd-7.7-amd64.img.gz
 
+openbsd-78-iso = dist/openbsd/7.8/amd64/cd78.iso
+openbsd-78-img = dist/openbsd/7.8/amd64/miniroot78.img
+
+openbsd-78-netboot-iso = ipxe/openbsd-7.8-amd64.iso.gz
+openbsd-78-netboot-img = ipxe/openbsd-7.8-amd64.img.gz
+
 alpine_mirror = dl-cdn.alpinelinux.org
 
 alpine-3221-kernel = dist/alpine/3.22.1/x86_64/kernel
@@ -55,10 +61,20 @@ dist_files = \
 	$(openbsd-75-iso) $(openbsd-75-img) \
 	$(openbsd-76-iso) $(openbsd-76-img) \
 	$(openbsd-77-iso) $(openbsd-77-img) \
+	$(openbsd-78-iso) $(openbsd-78-img) \
 	$(alpine-3221-kernel) $(alpine-3221-initrd) $(alpine-3221-modloop) \
 
-openbsd_netboot_iso_files = $(openbsd-75-netboot-iso) $(openbsd-76-netboot-iso) $(openbsd-77-netboot-iso)
-openbsd_netboot_img_files = $(openbsd-75-netboot-img) $(openbsd-76-netboot-img) $(openbsd-77-netboot-img)
+openbsd_netboot_iso_files = \
+	$(openbsd-75-netboot-iso) \
+	$(openbsd-76-netboot-iso) \
+	$(openbsd-77-netboot-iso) \
+	$(openbsd-78-netboot-iso)
+
+openbsd_netboot_img_files = \
+	$(openbsd-75-netboot-img) \
+	$(openbsd-76-netboot-img) \
+	$(openbsd-77-netboot-img) \
+	$(openbsd-78-netboot-img)
 
 openbsd_generated_files = $(openbsd_netboot_iso_files) $(openbsd_netboot_img_files) 
 linux_generated_files = $(customized-win11-iso)
@@ -113,6 +129,12 @@ $(openbsd-77-iso):
 $(openbsd-77-img):
 	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.7/amd64/miniroot77.img,$@)
 
+$(openbsd-78-iso):
+	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.8/amd64/cd78.iso,$@)
+
+$(openbsd-78-img):
+	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.8/amd64/miniroot78.img,$@)
+
 $(alpine-3221-kernel):
 	$(call curl_download,https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/vmlinuz-virt,$@)
 
@@ -142,6 +164,12 @@ $(openbsd-77-netboot-iso): $(openbsd-77-iso) $(openbsd-77-img) $(wildcard mkboot
 
 $(openbsd-77-netboot-img): $(openbsd-77-netboot-iso)
 	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.7 amd64 img)
+
+$(openbsd-78-netboot-iso): $(openbsd-78-iso) $(openbsd-78-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
+	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.8 amd64 iso)
+
+$(openbsd-78-netboot-img): $(openbsd-78-netboot-iso)
+	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.8 amd64 img)
 
 sterile: clean
 	rm -f $(generated_files)
