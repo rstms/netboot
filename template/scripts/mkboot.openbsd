@@ -124,7 +124,11 @@ modify_ramdisk_on_vnd1() {
   install -o root -g wheel -m 0755 $RC_NETBOOT $RD/rc.netboot
 
   # add rc.netboot pre_install call to ramdisk /.profile
-  awk <$RD/.profile '{print $0} /autoinstall -x/{print "\t/rc.netboot pre_install"}' >$RD/_profile
+  case $OSREV in
+    7.8) awk <$RD/.profile '{print $0} /upgrade -ax/{print "\t/rc.netboot pre_install"}' >$RD/_profile;;
+    *) awk <$RD/.profile '{print $0} /autoinstall -x/{print "\t/rc.netboot pre_install"}' >$RD/_profile;;
+  esac
+
   mv $RD/_profile $RD/.profile
   chmod 0755 $RD/.profile
   
