@@ -79,6 +79,25 @@ func CopyTree(dstPath, srcPath string) error {
 	return nil
 }
 
+func TreeFiles(srcPath string) ([]string, error) {
+	files := []string{}
+	err := filepath.Walk(srcPath, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return Fatal(err)
+		}
+		name := path
+		if info.Mode().IsDir() {
+			name += "/"
+		}
+		files = append(files, path)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
 func UnzipFileFromFS(dstPathname, srcPathname string, srcFS fs.FS) error {
 
 	tempDir, err := os.MkdirTemp("", "unzip-*")

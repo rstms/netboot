@@ -53,3 +53,8 @@ type NetbootDeleteHostResponse struct {
 	Message string   `json:"message"`
 	Files   []string `json:"files"`
 }
+
+type NetbootDistFilesResponse struct {
+	Message string   `json:"message"`
+	Files   []string `json:"files"`
+}

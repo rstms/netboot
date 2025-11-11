@@ -48,7 +48,23 @@ var APKOVL_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa-
 
 var MAC_ISO_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa-f]{2})\.iso$`)
 
-var OPENBSD_DIST_UPLOAD_PATTERN = regexp.MustCompile(`pub/OpenBSD/\d\.\d/amd64/[[:word:].-]+`)
+var DIST_UPLOAD_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
+	regexp.MustCompile(`^pub/alpine/\d\.\d\.\d/x86_64/[[:word:].-]+`),
+	regexp.MustCompile(`^pub/debian/[a-z]+/amd64/[[:word:].-]+`),
+	regexp.MustCompile(`^pub/OpenBSD/\d\.\d/amd64/[[:word:].-]+`),
+	regexp.MustCompile(`^pub/windows/\d+/x64/[[:word:].-]+`),
+}
+
+var DIST_DELETE_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
+	regexp.MustCompile(`^pub/alpine/.*`),
+	regexp.MustCompile(`^pub/debian/.*`),
+	regexp.MustCompile(`^pub/OpenBSD/.*`),
+	regexp.MustCompile(`^pub/windows/.*`),
+}
+
+var DIST_TREE_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
+	regexp.MustCompile(`.*`),
+}
 
 const htmlPrefix = `
 <!DOCTYPE html>
@@ -642,22 +658,21 @@ func (c *HostCache) UploadPackageHandlerTLS(w http.ResponseWriter, r *http.Reque
 	c.respond(w, "UploadResponse", message.NetbootResponse{Message: fmt.Sprintf("%v bytes written", fileBytes)})
 }
 
-func (c *HostCache) validateDistPathname(w http.ResponseWriter, r *http.Request) (string, bool) {
+func (c *HostCache) validateDistPathname(w http.ResponseWriter, r *http.Request, patterns []*regexp.Regexp) string {
 	pathParts := strings.Split(r.URL.Path, "/")
 	var uploadPathname string
 	if len(pathParts) > 3 {
 		uploadPathname = strings.Join(pathParts[3:], "/")
 	}
-
-	switch {
-	case OPENBSD_DIST_UPLOAD_PATTERN.MatchString(uploadPathname):
-	default:
-		c.fail(w, fmt.Sprintf("illegal filename: %s", uploadPathname), http.StatusBadRequest)
-		return "", false
+	distPathname := filepath.Join(c.uploadDir, strings.ReplaceAll(uploadPathname, "/", string(filepath.Separator)))
+	for _, pattern := range patterns {
+		if pattern.MatchString(uploadPathname) {
+			return distPathname
+		}
 	}
 
-	distPathname := filepath.Join(c.uploadDir, strings.ReplaceAll(uploadPathname, "/", string(filepath.Separator)))
-	return distPathname, true
+	c.fail(w, fmt.Sprintf("illegal filename: %s", uploadPathname), http.StatusBadRequest)
+	return ""
 }
 
 func (c *HostCache) UploadDistHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -679,8 +694,8 @@ func (c *HostCache) UploadDistHandlerTLS(w http.ResponseWriter, r *http.Request)
 	}
 	defer uploadFile.Close()
 
-	distPathname, ok := c.validateDistPathname(w, r)
-	if !ok {
+	distPathname := c.validateDistPathname(w, r, DIST_UPLOAD_PATTERNS)
+	if distPathname == "" {
 		return
 	}
 
@@ -712,8 +727,8 @@ func (c *HostCache) DeleteDistHandlerTLS(w http.ResponseWriter, r *http.Request)
 	if !c.requireClientCert(w, r) {
 		return
 	}
-	pathname, ok := c.validateDistPathname(w, r)
-	if !ok {
+	pathname := c.validateDistPathname(w, r, DIST_DELETE_PATTERNS)
+	if pathname == "" {
 		return
 	}
 	var msg string
@@ -739,6 +754,26 @@ func (c *HostCache) DeleteDistHandlerTLS(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	c.respond(w, "DistDeleteResponse", message.NetbootResponse{Message: msg})
+}
+
+func (c *HostCache) GetDistHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	pathname := c.validateDistPathname(w, r, DIST_TREE_PATTERNS)
+	if pathname == "" {
+		return
+	}
+	files, err := files.TreeFiles(pathname)
+	if err != nil {
+		Warning("%v", Fatal(err))
+		c.fail(w, "dist directory failed", http.StatusInternalServerError)
+		return
+	}
+	c.respond(w, "DistFilesResponse", message.NetbootDistFilesResponse{
+		Message: pathname,
+		Files:   files,
+	})
 }
 
 func (c *HostCache) mkURLs(r *http.Request) (string, string) {

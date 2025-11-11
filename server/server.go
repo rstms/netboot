@@ -184,6 +184,7 @@ func (s *NetbootServer) Start() error {
 	httpsMux.HandleFunc("POST /api/tarball/", s.hosts.UploadPackageHandlerTLS)
 	httpsMux.HandleFunc("POST /api/dist/", s.hosts.UploadDistHandlerTLS)
 	httpsMux.HandleFunc("DELETE /api/dist/", s.hosts.DeleteDistHandlerTLS)
+	httpsMux.HandleFunc("GET /api/dist/", s.hosts.GetDistHandlerTLS)
 	httpsMux.HandleFunc("POST /api/shutdown/", s.hosts.ShutdownHandlerTLS)
 
 	if s.proxy {
