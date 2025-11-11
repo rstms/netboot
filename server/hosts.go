@@ -56,10 +56,10 @@ var DIST_UPLOAD_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
 }
 
 var DIST_DELETE_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
-	regexp.MustCompile(`^pub/alpine/.*`),
-	regexp.MustCompile(`^pub/debian/.*`),
-	regexp.MustCompile(`^pub/OpenBSD/.*`),
-	regexp.MustCompile(`^pub/windows/.*`),
+	regexp.MustCompile(`^pub/alpine(/.*)*`),
+	regexp.MustCompile(`^pub/debian(/.*)*`),
+	regexp.MustCompile(`^pub/OpenBSD(/.*)*`),
+	regexp.MustCompile(`^pub/windows(/.*)*`),
 }
 
 var DIST_TREE_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
@@ -670,7 +670,6 @@ func (c *HostCache) validateDistPathname(w http.ResponseWriter, r *http.Request,
 			return distPathname
 		}
 	}
-
 	c.fail(w, fmt.Sprintf("illegal filename: %s", uploadPathname), http.StatusBadRequest)
 	return ""
 }
@@ -764,7 +763,7 @@ func (c *HostCache) GetDistHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if pathname == "" {
 		return
 	}
-	files, err := files.TreeFiles(pathname)
+	files, err := files.TreeFiles(c.uploadDir, pathname)
 	if err != nil {
 		Warning("%v", Fatal(err))
 		c.fail(w, "dist directory failed", http.StatusInternalServerError)

@@ -79,17 +79,23 @@ func CopyTree(dstPath, srcPath string) error {
 	return nil
 }
 
-func TreeFiles(srcPath string) ([]string, error) {
+func TreeFiles(basePath, srcPath string) ([]string, error) {
 	files := []string{}
 	err := filepath.Walk(srcPath, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return Fatal(err)
 		}
-		name := path
+		if path == basePath {
+			return nil
+		}
+		name, err := filepath.Rel(basePath, path)
+		if err != nil {
+			return Fatal(err)
+		}
 		if info.Mode().IsDir() {
 			name += "/"
 		}
-		files = append(files, path)
+		files = append(files, name)
 		return nil
 	})
 	if err != nil {
