@@ -71,6 +71,7 @@ type HostCache struct {
 	cacheDir          string
 	ipxeDir           string
 	distDir           string
+	uploadDir         string
 	cache             map[string]message.HostState
 	bootstrapCache    map[string]message.HostState
 	httpPort          int
@@ -85,7 +86,6 @@ type HostCache struct {
 	isoKeyLifetime    int
 	isoMode           map[string]string
 	whitelistLifetime int
-	distUploadDir     string
 	maxDistUploadMB   int64
 }
 
@@ -120,6 +120,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		bootstrapCache: make(map[string]message.HostState),
 		ipxeDir:        filepath.Join(dir, "ipxe"),
 		distDir:        filepath.Join(dir, "dist"),
+		uploadDir:      filepath.Join(dir, "upload"),
 		noDeleteIpxe:   ViperGetBool(prefix + "no_delete_ipxe"),
 		mirrorUrl: map[string]string{
 			"alpine":          ViperGetString(prefix + "mirror.alpine"),
@@ -134,7 +135,6 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		isoKeys:           make(map[string]string),
 		isoMode:           make(map[string]string),
 		isoKeyLifetime:    ViperGetInt(prefix + "iso_key_lifetime"),
-		distUploadDir:     ViperGetString(prefix + "dist_upload_dir"),
 		maxDistUploadMB:   ViperGetInt64(prefix + "max_dist_upload_mb"),
 	}
 	if !IsDir(c.ipxeDir) {
@@ -149,8 +149,8 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 			return nil, Fatal(err)
 		}
 	}
-	if !IsDir(c.distUploadDir) {
-		err := os.MkdirAll(c.distUploadDir, 0700)
+	if !IsDir(c.uploadDir) {
+		err := os.MkdirAll(c.uploadDir, 0700)
 		if err != nil {
 			return nil, Fatal(err)
 		}
@@ -166,6 +166,8 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 	}
 
 	log.Printf("ipxe dir: %s\n", c.ipxeDir)
+	log.Printf("dist dir: %s\n", c.distDir)
+	log.Printf("upload dir: %s\n", c.uploadDir)
 
 	return &c, nil
 }
@@ -276,7 +278,6 @@ func (c *HostCache) checkClientCert(w http.ResponseWriter, r *http.Request) *x50
 }
 
 func (c *HostCache) fail(w http.ResponseWriter, message string, status int) {
-
 	log.Printf("[%s] <- fail [%d] %s\n", c.Name, status, message)
 	http.Error(w, message, status)
 }
@@ -544,7 +545,7 @@ func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.R
 
 func (c *HostCache) CheckUploadCache(mirror string, w http.ResponseWriter, r *http.Request) bool {
 	filePath := strings.ReplaceAll(r.URL.Path, "/", string(filepath.Separator))
-	pathname := filepath.Join(c.distUploadDir, filePath)
+	pathname := filepath.Join(c.uploadDir, filePath)
 	if IsFile(pathname) {
 		log.Printf("returning uploaded dist file: %s", pathname)
 		http.ServeFile(w, r, pathname)
@@ -641,7 +642,25 @@ func (c *HostCache) UploadPackageHandlerTLS(w http.ResponseWriter, r *http.Reque
 	c.respond(w, "UploadResponse", message.NetbootResponse{Message: fmt.Sprintf("%v bytes written", fileBytes)})
 }
 
-func (c *HostCache) UploadDistFileHandlerTLS(w http.ResponseWriter, r *http.Request) {
+func (c *HostCache) validateDistPathname(w http.ResponseWriter, r *http.Request) (string, bool) {
+	pathParts := strings.Split(r.URL.Path, "/")
+	var uploadPathname string
+	if len(pathParts) > 3 {
+		uploadPathname = strings.Join(pathParts[3:], "/")
+	}
+
+	switch {
+	case OPENBSD_DIST_UPLOAD_PATTERN.MatchString(uploadPathname):
+	default:
+		c.fail(w, fmt.Sprintf("illegal filename: %s", uploadPathname), http.StatusBadRequest)
+		return "", false
+	}
+
+	distPathname := filepath.Join(c.uploadDir, strings.ReplaceAll(uploadPathname, "/", string(filepath.Separator)))
+	return distPathname, true
+}
+
+func (c *HostCache) UploadDistHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if !c.requireClientCert(w, r) {
 		return
 	}
@@ -653,23 +672,29 @@ func (c *HostCache) UploadDistFileHandlerTLS(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	uploadFile, fileHeader, err := r.FormFile("uploadFile")
+	uploadFile, _, err := r.FormFile("uploadFile")
 	if err != nil {
 		c.fail(w, fmt.Sprintf("failed retreiving upload file: %v", err), http.StatusBadRequest)
 		return
 	}
 	defer uploadFile.Close()
 
-	uploadFilename := fileHeader.Filename
-
-	switch {
-	case OPENBSD_DIST_UPLOAD_PATTERN.MatchString(uploadFilename):
-	default:
-		c.fail(w, fmt.Sprintf("illegal filename: %s", uploadFilename), http.StatusBadRequest)
+	distPathname, ok := c.validateDistPathname(w, r)
+	if !ok {
 		return
 	}
 
-	distFile, err := os.Create(filepath.Join(c.distUploadDir, uploadFilename))
+	dir, _ := filepath.Split(distPathname)
+	if !IsDir(dir) {
+		err := os.MkdirAll(dir, 0700)
+		if err != nil {
+			Warning("%v", Fatal(err))
+			c.fail(w, "upload failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	distFile, err := os.Create(distPathname)
 	if err != nil {
 		c.fail(w, err.Error(), http.StatusBadRequest)
 		return
@@ -683,9 +708,40 @@ func (c *HostCache) UploadDistFileHandlerTLS(w http.ResponseWriter, r *http.Requ
 	c.respond(w, "DistUploadResponse", message.NetbootResponse{Message: fmt.Sprintf("%v bytes written", fileBytes)})
 }
 
+func (c *HostCache) DeleteDistHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	if !c.requireClientCert(w, r) {
+		return
+	}
+	pathname, ok := c.validateDistPathname(w, r)
+	if !ok {
+		return
+	}
+	var msg string
+	switch {
+	case IsFile(pathname):
+		err := os.Remove(pathname)
+		if err != nil {
+			Warning("%v", Fatal(err))
+			c.fail(w, "file delete failed", http.StatusInternalServerError)
+			return
+		}
+		msg = "file deleted"
+	case IsDir(pathname):
+		err := os.RemoveAll(pathname)
+		if err != nil {
+			Warning("%v", Fatal(err))
+			c.fail(w, "directory delete failed", http.StatusInternalServerError)
+			return
+		}
+		msg = "directory deleted"
+	default:
+		c.fail(w, "not found", http.StatusNotFound)
+		return
+	}
+	c.respond(w, "DistDeleteResponse", message.NetbootResponse{Message: msg})
+}
+
 func (c *HostCache) mkURLs(r *http.Request) (string, string) {
-	log.Printf("mkURLs: r.Host=%s r.URL.Hostname=%s r.URL.Port=%s r.URL=%s\n", r.Host, r.URL.Hostname(), r.URL.Port(), r.URL)
-	log.Printf("mkURLs: c.httpURL=%s c.httpsURL=%s\n", c.httpURL, c.httpsURL)
 	httpsURL := c.httpsURL
 	if httpsURL == "" {
 		httpsURL = "https://" + r.Host

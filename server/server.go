@@ -95,6 +95,7 @@ func NewNetbootServer() (*NetbootServer, error) {
 	ViperSetDefault(viperPrefix+"cert", filepath.Join(userConfigDir, ProgramName(), "netboot-server-cert.pem"))
 	ViperSetDefault(viperPrefix+"key", filepath.Join(userConfigDir, ProgramName(), "netboot-server-key.pem"))
 	ViperSetDefault(viperPrefix+"cache_dir", filepath.Join(userCacheDir, ProgramName()))
+	ViperSetDefault(viperPrefix+"enable_proxy", true)
 
 	s := NetbootServer{
 		Name:                   "netboot",
@@ -181,7 +182,8 @@ func (s *NetbootServer) Start() error {
 	httpsMux.HandleFunc("DELETE /api/whitelist/{ip}/", s.hosts.DeleteWhitelistAddressHandlerTLS)
 	httpsMux.HandleFunc("DELETE /api/host/", s.hosts.DeleteHostHandlerTLS)
 	httpsMux.HandleFunc("POST /api/tarball/", s.hosts.UploadPackageHandlerTLS)
-	httpsMux.HandleFunc("POST /api/dist/", s.hosts.UploadDistFileHandlerTLS)
+	httpsMux.HandleFunc("POST /api/dist/", s.hosts.UploadDistHandlerTLS)
+	httpsMux.HandleFunc("DELETE /api/dist/", s.hosts.DeleteDistHandlerTLS)
 	httpsMux.HandleFunc("POST /api/shutdown/", s.hosts.ShutdownHandlerTLS)
 
 	if s.proxy {
