@@ -51,7 +51,7 @@ var MAC_ISO_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa
 var DIST_UPLOAD_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
 	regexp.MustCompile(`^pub/alpine/\d\.\d\.\d/x86_64/[[:word:].-]+`),
 	regexp.MustCompile(`^pub/debian/[a-z]+/amd64/[[:word:].-]+`),
-	regexp.MustCompile(`^pub/OpenBSD/\d\.\d/amd64/[[:word:].-]+`),
+	regexp.MustCompile(`^pub/OpenBSD/\d\.\d/packages/amd64/[[:word:].-]+`),
 	regexp.MustCompile(`^pub/windows/\d+/x64/[[:word:].-]+`),
 }
 
