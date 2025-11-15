@@ -2,6 +2,8 @@
 
 # openbsd rc.netboot
 
+echo 'rc.netboot generated __NETBOOT_GEN_TIMESTAMP__ on __NETBOOT_GEN_HOST__'
+
 # pull in functions from autoinstall
 FUNCS_ONLY=1
 . /autoinstall
@@ -278,7 +280,10 @@ configure_netboot() {
     _file_url=${_url}/ipxe/${_mac}.response
     _gdl_certs="--ca /etc/ssl/keymaster.pem --cert /etc/ssl/netboot.pem --key /etc/ssl/netboot.key"
     echo "Downloading ${_file_url}"
+    console_prompt "enter to execute: ${_gdl} --verbose ${_gdl_certs} ${file_url}"
+    set -x
     ${_gdl} --verbose ${_gdl_certs} ${file_url}
+    set +x
     mv ${_mac}.response auto_install.conf
     ls -l /auto_install.conf
 

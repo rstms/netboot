@@ -191,8 +191,8 @@ func (m *MkBoot) mkbootOpenBSD() error {
 		return Fatal(err)
 	}
 
-	// unzip template customized openbsd netboot img to /ipxe/MAC.boot
-	// autoexec in iso image will sanboot /san/MAC.boot
+	// extract template-customized openbsd netboot ISO to /ipxe/MAC.boot
+	// autoexec.ipxe in the iso image will sanboot /san/MAC.boot
 	srcBoot := filepath.Join("ipxe", fmt.Sprintf("openbsd-%s-%s.iso.gz", m.Config.Version, m.Config.Arch))
 	dstBoot := filepath.Join(m.IpxeDir, m.Config.Address+".boot")
 	err = files.UnzipFileFromFS(dstBoot, srcBoot, template.Ipxe)
@@ -201,6 +201,7 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	}
 	log.Printf("mkbootOpenbsd: boot=%s\n", dstBoot)
 
+	/* don't write the GDL to the iso, rc.netboot will FTP download it
 	// add gdl??.tgz to netboot iso bootfiles
 	tag := strings.ReplaceAll(m.Config.Version, ".", "")
 	srcGdl := filepath.Join("dist", "openbsd", m.Config.Version, m.Config.Arch, "gdl"+tag+".tgz")
@@ -211,6 +212,7 @@ func (m *MkBoot) mkbootOpenBSD() error {
 		return Fatal(err)
 	}
 	*m.BootFiles = append(*m.BootFiles, dstGdl)
+	*/
 
 	srcImage := "netboot.xyz.img.gz"
 	injectBootFiles := true

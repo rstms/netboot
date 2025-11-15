@@ -122,6 +122,9 @@ modify_ramdisk_on_vnd1() {
 
   # add netboot autoinstall shim to ramdisk
   install -o root -g wheel -m 0755 $RC_NETBOOT $RD/rc.netboot
+  
+  sed -i -e "s/__NETBOOT_GEN_TIMESTAMP__/$(date)/" $RD/rc.netboot
+  sed -i -e "s/__NETBOOT_GEN_HOST__/$(uname -a)/" $RD/rc.netboot
 
   # add rc.netboot pre_install call to ramdisk /.profile
   case $OSREV in
