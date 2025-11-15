@@ -306,13 +306,10 @@ configure_netboot() {
 }
 
 copy_installer_files() {
-    ls -al /
-    console_prompt "installer root: hit enter to continue"
-}
-
-not_copy_installer_files() {
     echo copying installer scripts to $1
     mkdir -p $1
+    ls -al / >$1/dir.out
+    cp /netboot.env $1
     cp /.profile $1
     cp /*.response $1
     cp /autoinstall $1
@@ -346,6 +343,7 @@ install_site_package() {
     chmod 0700 /mnt/root/.netboot
 
     [ -n "${_debug}" ] && copy_installer_files /mnt/root/.netboot/installer || true
+
 
     _gdl="/usr/local/bin/rstms-gdl"
     _file_url="${_url}/ipxe/${_mac}.tgz"
