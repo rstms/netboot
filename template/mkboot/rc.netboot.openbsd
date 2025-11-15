@@ -331,22 +331,10 @@ install_site_package() {
 
     . /netboot.env
 
-    if [ -x /mnt/usr/local/bin/gdl ]; then
-	echo "Using existing gdl:"
-	ls -l /mnt/usr/local/bin/gdl
-    else 
-	# fixme: chroot to mnt and use pkg_install
-	set -x
-	echo "Installing gdl to /mnt/usr/local/bin"
-	mkdir /mnt/root/gdl
-	install_gdl /mnt/root/gdl
-	ls -al /mnt/root/gdl
-	ls -al /mnt/root/gdl/bin
-	mv /mnt/root/gdl/bin/gdl /mnt/usr/local/bin/gdl
-	rm -rf /mnt/root/gdl
-	chmod 0755 /mnt/usr/local/bin/gdl
-	set +x
-    fi
+    # FIXME: chroot to mnt and use pkg_install
+    echo "Installing gdl to /mnt/usr/local/bin"
+    mkdir -p /mnt/usr/local
+    install_gdl /mnt/usr/local
     cd /
     cp /etc/ssl/keymaster.pem /mnt/etc/ssl
     cp /etc/ssl/netboot.pem /mnt/etc/ssl
@@ -359,13 +347,11 @@ install_site_package() {
 
     [ -n "${_debug}" ] && copy_installer_files /mnt/root/.netboot/installer || true
 
-    _gdl="/usr/local/bin/gdl"
+    _gdl="/usr/local/bin/rstms-gdl"
     _file_url="${_url}/ipxe/${_mac}.tgz"
     _gdl_certs="--ca /etc/ssl/keymaster.pem --cert /etc/ssl/netboot.pem --key /etc/ssl/netboot.key"
     echo "Downloading site package ${_file_url}..."
-    set +x
     chroot /mnt sh -c "${_gdl} ${_gdl_certs} ${_file_url} - | tar zxvphf - >/root/.netboot/package.stdout 2>/root/.netboot/package.stderr"
-    set -x
     # fix tarball directory permissions
     # FIXME: use /etc/mtree/4.4BSD.dist for this
     chmod 0755 /mnt
