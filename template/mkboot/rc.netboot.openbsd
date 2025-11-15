@@ -1,8 +1,11 @@
 #!/bin/ksh
 
+# 
 # openbsd rc.netboot
-
-echo 'rc.netboot generated __NETBOOT_GEN_TIMESTAMP__ on __NETBOOT_GEN_HOST__'
+#
+# generated __NETBOOT_GEN_TIMESTAMP__
+# __NETBOOT_GEN_HOST__
+#
 
 # pull in functions from autoinstall
 FUNCS_ONLY=1
@@ -280,17 +283,14 @@ configure_netboot() {
     _file_url=${_url}/ipxe/${_mac}.response
     _gdl_certs="--ca /etc/ssl/keymaster.pem --cert /etc/ssl/netboot.pem --key /etc/ssl/netboot.key"
     echo "Downloading ${_file_url}"
-    console_prompt "enter to execute: ${_gdl} --verbose ${_gdl_certs} ${file_url}"
-    set -x
-    ${_gdl} --verbose ${_gdl_certs} ${file_url}
-    set +x
+    ${_gdl} ${_gdl_certs} ${_file_url}
     mv ${_mac}.response auto_install.conf
     ls -l /auto_install.conf
 
     if grep -q 'file:///disklabel_template' auto_install.conf; then 
 	_file_url=${_url}/ipxe/${_mac}.disk
 	echo "Downloading ${_file_url}"
-	${_gdl} --verbose ${_gdl_certs} ${file_url}
+	${_gdl} ${_gdl_certs} ${_file_url}
 	mv ${_mac}.disk /disklabel_template
 	ls -l /disklabel_template
     fi
@@ -335,6 +335,7 @@ install_site_package() {
 	echo "Using existing gdl:"
 	ls -l /mnt/usr/local/bin/gdl
     else 
+	# fixme: chroot to mnt and use pkg_install
 	set -x
 	echo "Installing gdl to /mnt/usr/local/bin"
 	mkdir /mnt/root/gdl
