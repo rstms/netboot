@@ -316,6 +316,10 @@ install_site_package() {
 
     . /netboot.env
 
+    echo "shell before gdl install"
+    sh -i
+
+
     _gdl='/usr/local/bin/gdl -ca /etc/ssl/keymaster.pem -cert /etc/ssl/netboot.pem -key /etc/ssl/netboot.key'
     if [ -x /mnt/usr/local/bin/gdl ]; then
 	echo "Using existing gdl:"
