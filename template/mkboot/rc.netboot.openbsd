@@ -58,6 +58,7 @@ make_disk_device_nodes() {
 
 
 mount_netboot_disk_image() {
+
     [ -n "${_debug}" ] && echo mount_netboot_disk_image || true
     local _disk
     _disk=$(disk_device)
@@ -137,13 +138,14 @@ install_netboot_config_files() {
     # install env config from mounted directory
     install_config_file netboot.env /netboot.env root wheel 0444
 
-    # replace installer system CA with netboot CA
-    install_config_file keymaster.pem /etc/ssl/cert.pem root wheel 0444
-
     # install netboot CA and client certs
     install_config_file keymaster.pem /etc/ssl/keymaster.pem root wheel 0444
     install_config_file netboot.pem /etc/ssl/netboot.pem root wheel 0444
     install_config_file netboot.key /etc/ssl/netboot.key root wheel 0444
+
+    # append keymaster.pem to system CA
+    cat /etc/ssl/keymaster.pem >>/etc/ssl/cert.pem
+
     if [ -n "${_debug}" ]; then
 	ls -l /etc/ssl
 	cat /netboot.env
@@ -202,25 +204,20 @@ unmount_usr_local() {
 
 
 install_gdl() {
-    [ -n "${_debug}" ] && echo install_gdl || true
     local _target
+    [ -n "${_debug}" ] && echo install_gdl || true
+
     _target=$1
-    if [ -e ${_target}/bin/gdl ]; then
+    if [ -e ${_target}/bin/rstms-gdl ]; then
 	echo "Detected existing gdl:"
     else
-	echo "Installing gdl.tgz to ${_target}/bin..."
+	echo "Installing rstms-gdl to ${_target}/bin..."
 	cd ${_target}
-	if [ -e /netboot_config/gdl.tgz ]; then
-	    tar zxf /netboot_config/gdl.tgz
-	else
-	    ftp -o - ${_gdl_url} | tar zxf -
-	fi	
-	chmod 0755 bin/*
-	bin/install_gdl
+	ftp -o - -S cafile=/etc/ssl/keymaster.pem ${_gdl_url} | tar zvxf - bin/rstms-gdl
 	cd /
     fi
     if [ -n "${_debug}" ]; then
-	ls -l ${_target}/bin/gdl
+	ls -l ${_target}/bin/rstms-gdl
 	console_prompt "install_gdl: enter to continue"
     fi
 }
@@ -277,24 +274,18 @@ configure_netboot() {
 
     install_gdl /usr/local
 
+    _gdl=/usr/local/bin/rstms-gdl
     _file_url=${_url}/ipxe/${_mac}.response
+    _gdl_certs="--ca /etc/ssl/keymaster.pem --cert /etc/ssl/netboot.pem --key /etc/ssl/netboot.key"
     echo "Downloading ${_file_url}"
-    /usr/local/bin/gdl \
-	-ca /etc/ssl/keymaster.pem \
-	-cert /etc/ssl/netboot.pem \
-	-key /etc/ssl/netboot.key \
-	${_file_url}
+    ${_gdl} --verbose ${_gdl_certs} ${file_url}
     mv ${_mac}.response auto_install.conf
     ls -l /auto_install.conf
 
     if grep -q 'file:///disklabel_template' auto_install.conf; then 
 	_file_url=${_url}/ipxe/${_mac}.disk
 	echo "Downloading ${_file_url}"
-	/usr/local/bin/gdl \
-	    -ca /etc/ssl/keymaster.pem \
-	    -cert /etc/ssl/netboot.pem \
-	    -key /etc/ssl/netboot.key \
-	    ${_url}/ipxe/${_mac}.disk
+	${_gdl} --verbose ${_gdl_certs} ${file_url}
 	mv ${_mac}.disk /disklabel_template
 	ls -l /disklabel_template
     fi
@@ -309,18 +300,32 @@ configure_netboot() {
     fi
 }
 
+copy_installer_files() {
+    ls -al /
+    console_prompt "installer root: hit enter to continue"
+}
+
+not_copy_installer_files() {
+    echo copying installer scripts to $1
+    mkdir -p $1
+    cp /.profile $1
+    cp /*.response $1
+    cp /autoinstall $1
+    cp /install $1
+    cp /install.* $1
+    cp /netboot.env $1
+    cp /rc.netboot $1
+    cp /upgrade $1
+    cp -rp /tmp $1
+}
+
 install_site_package() {
     [ -n "${_debug}" ] && echo install_site_package || true
 
-    local _mac _url _debug _gdl _file_url
+    local _mac _url _debug _gdl _gdl_certs _file_url
 
     . /netboot.env
 
-    echo "shell before gdl install"
-    sh -i
-
-
-    _gdl='/usr/local/bin/gdl -ca /etc/ssl/keymaster.pem -cert /etc/ssl/netboot.pem -key /etc/ssl/netboot.key'
     if [ -x /mnt/usr/local/bin/gdl ]; then
 	echo "Using existing gdl:"
 	ls -l /mnt/usr/local/bin/gdl
@@ -346,11 +351,17 @@ install_site_package() {
     mkdir /mnt/root/.netboot
     chmod 0700 /mnt/root/.netboot
 
-    _file_url="${_url}/ipxe/${_mac}.tgz"
-    echo "Downloading site package ${_file_url}..."
-    chroot /mnt sh -c "${_gdl} ${_file_url} - | tar zxvphf - >/root/.netboot/package.stdout 2>/root/.netboot/package.stderr"
+    [ -n "${_debug}" ] && copy_installer_files /mnt/root/.netboot/installer || true
 
-    # fix tarball directory premissions
+    _gdl="/usr/local/bin/gdl"
+    _file_url="${_url}/ipxe/${_mac}.tgz"
+    _gdl_certs="--ca /etc/ssl/keymaster.pem --cert /etc/ssl/netboot.pem --key /etc/ssl/netboot.key"
+    echo "Downloading site package ${_file_url}..."
+    set +x
+    chroot /mnt sh -c "${_gdl} ${_gdl_certs} ${_file_url} - | tar zxvphf - >/root/.netboot/package.stdout 2>/root/.netboot/package.stderr"
+    set -x
+    # fix tarball directory permissions
+    # FIXME: use /etc/mtree/4.4BSD.dist for this
     chmod 0755 /mnt
     chmod 0755 /mnt/etc
     chmod 0755 /mnt/etc/ssl

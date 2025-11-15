@@ -102,4 +102,4 @@ server/testdata/BOOTX64.EFI: template/ipxe/netboot.xyz.efi.gz
 	$(if $(openbsd),gzcat,zcat) <$< >$@
 
 run:
-	./netboot -dL- server
+	./netboot -d server

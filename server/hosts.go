@@ -66,6 +66,8 @@ var DIST_TREE_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
 	regexp.MustCompile(`.*`),
 }
 
+var GDL_VERSION_PATTERN = regexp.MustCompile(`^pub/.*/rstms-gdl-(\d+)\.(\d+)\.(\d+).*\.tgz$`)
+
 const htmlPrefix = `
 <!DOCTYPE html>
 <html lang="en">
@@ -1242,7 +1244,21 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	} else {
 		env["_shutdown"] = ""
 	}
-	env["_gdl_url"] = fmt.Sprintf("%s/gdl/%s/%s/gdl.tgz", url, config.Version, config.Arch)
+
+	switch config.OS {
+	case "openbsd":
+		gdlUrl, err := c.gdlUrl(url, config.Version, config.Arch)
+		if err != nil {
+			return "", nil, Fatal(err)
+		}
+		env["_gdl_url"] = gdlUrl
+
+	default:
+		env["_gdl_url"] = fmt.Sprintf("%s/gdl/%s/%s/gdl.tgz", url, config.Version, config.Arch)
+	}
+	env["GDL_CA"] = "/etc/ssl/keymaster.pem"
+	env["GDL_CERT"] = "/etc/ssl/netboot.pem"
+	env["GDL_KEY"] = "/etc/ssl/netboot.key"
 
 	netbootEnv := ""
 	envPrefix := ""
@@ -1271,6 +1287,30 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 	}
 	log.Printf("Generated %s\n", isoFile)
 	return isoFile, bootFiles, nil
+}
+
+func (c *HostCache) gdlUrl(url, version, arch string) (string, error) {
+	gdlPath := filepath.Join(c.uploadDir, "pub", "OpenBSD", version, "packages", arch)
+	log.Printf("gdlPath=%s\n", filepath.Join)
+	files, err := files.TreeFiles(c.uploadDir, gdlPath)
+	if err != nil {
+		return "", Fatal(err)
+	}
+	gdlFiles := []string{}
+	for _, file := range files {
+		if GDL_VERSION_PATTERN.MatchString(file) {
+			gdlFiles = append(gdlFiles, file)
+		}
+	}
+	if len(gdlFiles) < 1 {
+		return "", Fatalf("no gdl file found for OpenBSD %s %s", version, arch)
+	}
+	sortedFiles, err := SemverSort(gdlFiles, GDL_VERSION_PATTERN)
+	if err != nil {
+		return "", Fatal(err)
+	}
+	tarball := sortedFiles[len(sortedFiles)-1]
+	return fmt.Sprintf("%s/%s", url, tarball), nil
 }
 
 func normalizeMAC(mac string) string {

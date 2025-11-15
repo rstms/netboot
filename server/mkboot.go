@@ -101,40 +101,61 @@ func (m *MkBoot) checkDistDir(os, version, arch string) (string, error) {
 	return distDir, nil
 }
 
+// semver srot a slice of strings using a regex pattern to parse major, minor, patch groups
+func SemverSort(unsorted []string, pattern *regexp.Regexp) ([]string, error) {
+	keyMap := make(map[string]string)
+	keys := []string{}
+	log.Printf("unsorted: %s\n", FormatJSON(unsorted))
+	if len(unsorted) <= 1 {
+		return unsorted, nil
+	}
+	for _, entry := range unsorted {
+		parts := pattern.FindStringSubmatch(entry)
+		if len(parts) == 4 {
+			major, err := strconv.Atoi(parts[1])
+			if err != nil {
+				return nil, Fatal(err)
+			}
+			minor, err := strconv.Atoi(parts[2])
+			if err != nil {
+				return nil, Fatal(err)
+			}
+			version, err := strconv.Atoi(parts[3])
+			if err != nil {
+				return nil, Fatal(err)
+			}
+			key := fmt.Sprintf("%04d.%04d.%04d", major, minor, version)
+			keys = append(keys, key)
+			keyMap[key] = entry
+		}
+	}
+	slices.Sort(keys)
+	sorted := []string{}
+	for _, key := range keys {
+		sorted = append(sorted, keyMap[key])
+	}
+	log.Printf("sorted: %s\n", FormatJSON(sorted))
+	return sorted, nil
+}
+
 func DefaultDist(os string) (string, string, string, error) {
 	distDir := path.Join("dist", os)
 	versionEntries, err := fs.ReadDir(template.Dist, distDir)
 	if err != nil {
 		return "", "", "", Fatal(err)
 	}
-	vmap := make(map[string]string)
-	keys := []string{}
+	versions := []string{}
 	for _, entry := range versionEntries {
-		parts := VERSION_PATTERN.FindStringSubmatch(entry.Name())
-		if len(parts) == 4 {
-			major, err := strconv.Atoi(parts[1])
-			if err != nil {
-				return "", "", "", Fatal(err)
-			}
-			minor, err := strconv.Atoi(parts[2])
-			if err != nil {
-				return "", "", "", Fatal(err)
-			}
-			version, err := strconv.Atoi(parts[3])
-			if err != nil {
-				return "", "", "", Fatal(err)
-			}
-			key := fmt.Sprintf("%04d.%04d.%04d", major, minor, version)
-			keys = append(keys, key)
-			vmap[key] = entry.Name()
-		}
+		versions = append(versions, entry.Name())
 	}
-	if len(keys) < 1 {
+	if len(versions) < 1 {
 		return "", "", "", Fatalf("no dist dirs found for os: %s", os)
 	}
-	slices.Sort(keys)
-	log.Printf("sorted_versions: %s\n", FormatJSON(keys))
-	version := vmap[keys[0]]
+	sortedVersions, err := SemverSort(versions, VERSION_PATTERN)
+	if err != nil {
+		return "", "", "", Fatal(err)
+	}
+	version := sortedVersions[0]
 
 	archEntries, err := fs.ReadDir(template.Dist, path.Join(distDir, version))
 	if err != nil {
