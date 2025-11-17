@@ -55,6 +55,8 @@ github.com/rogpeppe/go-internal v1.9.0 h1:73kH8U+JUqXU8lRuOHeVHaa/SZPifC7BkcraZV
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
 github.com/rstms/cobra-daemon v0.0.17 h1:QewEC3bdhvTo0Q0r0RoMHoWcxOnOU23eYy3iULJzitY=
 github.com/rstms/cobra-daemon v0.0.17/go.mod h1:jNDrtlTZM+MVnMWyNg/UT+Ndfem0GNYMWOpLgevO0Bk=
+github.com/rstms/cobra-daemon v0.0.20 h1:AXBQGttWyyjWboh14mRZOEoRymfWkiknuhVpFiYn7Ew=
+github.com/rstms/cobra-daemon v0.0.20/go.mod h1:Urrd4SEo2h7aInW1dEZzblht9Bsq8b3GxYn0p9ikN1Y=
 github.com/rstms/console v0.0.3 h1:y8OGSzWJM7mO54Fm4WkM5k57WCWpLHfgcoOrugBeIi0=
 github.com/rstms/console v0.0.3/go.mod h1:s3hXL6zFnBdqqr84x/9MSDi/UTfv6OmLPule6amcWNk=
 github.com/rstms/ffs v0.0.7 h1:tN8y1ZO6c3Vhst7KFCVKPsH8H8RID3G6jq7vMHi9yxI=
@@ -67,6 +69,10 @@ github.com/rstms/go-common v0.2.59 h1:6tWbU0b2RI14xXhEqSZFsQfo+pNxcsLGx2x4UX1Kif
 github.com/rstms/go-common v0.2.59/go.mod h1:X+YExXFyL7HOZwV8fB3VCqfehcBe2IqSaKzsacJQjb0=
 github.com/rstms/go-common v0.2.60 h1:Qq476Cl7LK+2y5YURb8Q8PuDpvxT33ZZgBsN8ycZVI0=
 github.com/rstms/go-common v0.2.60/go.mod h1:X+YExXFyL7HOZwV8fB3VCqfehcBe2IqSaKzsacJQjb0=
+github.com/rstms/go-common v0.2.61 h1:1OyiaFXEz7sK9ah3ZsSoqp6aSlgL/1Jvyv3CAkxzZXo=
+github.com/rstms/go-common v0.2.61/go.mod h1:C7OFqZdf3aRS4eF9mDv4F+0xGgfP7r43fUI72bBCatg=
+github.com/rstms/go-common v0.2.62 h1:/hKxe/uyjsFw65bzRqs77c80W85ZC6OUXQTxrMSUBdU=
+github.com/rstms/go-common v0.2.62/go.mod h1:0FYg+RMBKp2OsW3/f6spm63ymp6O3Z8FT7mOghWlccM=
 github.com/rstms/iso-kit v0.0.0-20251006152227-dbce8dbec2af h1:vhi4tb7QbKwDYzPQj49UF7xmEi/jaHuJQx1+r7g9MSs=
 github.com/rstms/iso-kit v0.0.0-20251006152227-dbce8dbec2af/go.mod h1:cfotq23I7wqcHGYAGkaf89OrucV4azhJbtzEGYeALD4=
 github.com/rstms/systray v0.0.15 h1:2ovkVhgbsQALroasX/CJnEwp7BTvYwUGt/ve6U0HEQU=
