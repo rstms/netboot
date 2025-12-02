@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+{
+awk -F'[(),[:space:]]*' <server/server.go '/httpMux.HandleFunc/{ printf("http %s %s\n", $3, $4); }'
+awk -F'[(),[:space:]]*' <server/server.go '/httpsMux.HandleFunc/{ printf("https %s %s\n", $3, $4); }'
+} | tr -d '"' | sort
