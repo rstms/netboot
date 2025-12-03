@@ -61,6 +61,7 @@ CD=$DIR/cd
 ISO=$DIR/iso
 IMG=$DIR/img
 
+
 #echo DST_ISO=$DST_ISO
 #echo SRC_ISO=$SRC_ISO
 #echo OSREV=$OSREV
@@ -206,6 +207,9 @@ build_img() {
  
   echo "generating $DST_IMG"
 
+  # preserve modification time of SRC_IMG
+  SRC_IMG_MTIME=$(stat -f '%Dm' $SRC_IMG)
+
   # mount src image on vnd0
   vnconfig vnd0 $SRC_IMG
 
@@ -218,7 +222,6 @@ build_img() {
   # mount src root filesystem
   mkdir $IMG.src
   mount /dev/vnd0a $IMG.src
-
 
   # read EFI partition block count from SRC_IMG
   efi_blocks=$(disklabel vnd0 | awk '/^[[:space:]]*i:[[:space:]]/{print $2}')
@@ -287,6 +290,9 @@ build_img() {
   # unmount and disconnect dst vnd1
   rmdir $IMG.dst
   vnconfig -u vnd1
+
+  # restore modification time of SRC_IMG
+  touch -t $(date -r $SRC_IMG_MTIME '+%Y%m%d%H%M.%S') $SRC_IMG
 }
 
 case $TARGET in 
@@ -309,3 +315,5 @@ case $TARGET in
 	ls -l $DST_IMG.gz
 	;;
 esac
+
+
