@@ -88,7 +88,7 @@ regen: clean gen
 $(win11-iso):
 	$(call curl_download,https://vega.rstms.net/pub/iso/$(notdir $@),$@)
 
-dist_upload_host != $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host)
+dist_upload_host = $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host)
 
 $(customized-win11-iso): $(win11-iso)
 	$(call linux_exec,scripts/generate_windows_netboot $< $@)
