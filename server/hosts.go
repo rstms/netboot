@@ -490,7 +490,7 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch ext {
-	case "iso", "img", "sh", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "postinstall":
+	case "iso", "img", "sh", "ipxe", "kernel", "initrd", "response", "tgz", "disk", "cacerts", "postinstall", "netboot":
 		http.ServeFile(w, r, filepath.Join(c.ipxeDir, mac+"."+ext))
 		return
 	}

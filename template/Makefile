@@ -94,10 +94,7 @@ $(customized-win11-iso): $(win11-iso)
 	$(call linux_exec,scripts/generate_windows_netboot $< $@)
 	$(if $(dist_upload_host),scp -p $< $(dist_upload_host):iso/$(notdir $@),echo "dist_upload_host unset, skipping upload")
 
-curl_download = \
-	mkdir -p $(dir $(2)) && \
-	curl -L $(1) -o $(2) && \
-	test "$$(stat -f %z $(2))" -gt "0"
+curl_download = mkdir -p $(dir $(2)) && curl -L $(1) -o $(2) && test -s $(2)
 
 $(debian-12-kernel):
 	$(call curl_download,http://$(debian_mirror)/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux,$@)
