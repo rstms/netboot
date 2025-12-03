@@ -12,6 +12,9 @@ openbsd_exec = $(if $(openbsd),$(1),@echo "not on openbsd; skipping: $(1)")
 linux_exec = $(if $(linux),$(1),@echo "not on linux; skipping: $(1)")
 windows_exec = $(if $(windows),$(1),@echo "not on windows; skipping: $(1)")
 
+dist_upload_host = $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host)
+curl_download = mkdir -p $(dir $(2)) && curl -L $(1) -o $(2) && test -s $(2)
+
 debian_mirror = ftp.us.debian.org
 
 debian-12-kernel = dist/debian/bookworm/amd64/linux
@@ -86,15 +89,19 @@ gen: $(dist_files) $(generated_files)
 regen: clean gen
 
 $(win11-iso):
-	$(call curl_download,https://vega.rstms.net/pub/iso/$(notdir $@),$@)
+	$(call curl_download,https://$(dist_upload_host)/pub/iso/$(notdir $@),$@)
 
-dist_upload_host = $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host)
+ifeq ($(openbsd),1)
+$(customized-win11-iso):
+	$(call curl_download,https://$(dist_upload_host)/pub/iso/$(notdir $@),$@)
+endif
 
+ifeq ($(linux),1)
 $(customized-win11-iso): $(win11-iso)
 	$(call linux_exec,scripts/generate_windows_netboot $< $@)
 	$(if $(dist_upload_host),scp -p $@ $(dist_upload_host):iso/$(notdir $@),echo "dist_upload_host unset, skipping upload")
+endif
 
-curl_download = mkdir -p $(dir $(2)) && curl -L $(1) -o $(2) && test -s $(2)
 
 $(debian-12-kernel):
 	$(call curl_download,http://$(debian_mirror)/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux,$@)
