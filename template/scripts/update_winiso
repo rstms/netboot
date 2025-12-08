@@ -40,6 +40,14 @@ local_checksum=$(get_local_checksum)
 #log server_checksum=$server_checksum
 #log local_checksum=$local_checksum
 
+mkdir -p $destdir
+
+if [ ! -e ${destdir}/SHA256 ]; then 
+    log "generating local checksums"
+    ( cd ${destdir} && sha256 * >SHA256 )
+    log "completed generating local checksums"
+fi
+
 if [ ! -f "$destfile" ]; then
     log "$destfile is not present"
 fi
@@ -49,7 +57,7 @@ if [ "$server_checksum" != "$local_checksum" ]; then
     case $cmd in 
 	download)
 	    log downloading $url/$filename
-	    curl -o "${destdir}/${filename}" $url/$filename
+	    curl --remote-time -o "${destdir}/${filename}" $url/$filename
 	    log "updating local checksum"
 	    curl -s $url/SHA256 | grep "($filename)" >>$destdir/SHA256
 	    log "download complete"
