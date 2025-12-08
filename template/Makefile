@@ -81,9 +81,11 @@ linux_generated_files = $(customized-win11-iso)
 
 generated_files = $(openbsd_generated_files) $(linux_generated_files)
 
-gen: $(dist_files) $(generated_files)
+gen: distgen $(generated_files)
 
 regen: clean gen
+
+distgen: $(dist_files)
 
 $(win11-iso):
 	@scripts/update_winiso $(dist_upload_host) $(notdir $@) iso download
@@ -173,7 +175,8 @@ sterile: clean
 	rm -f $(generated_files)
 
 distclean:
-	find dist -type f -exec rm \{\} \;
+	rm -rf dist
+	mkdir dist
 	echo "# placeholder" >dist/README.md
 
 # only clean files that can be regenerated

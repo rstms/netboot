@@ -87,6 +87,9 @@ sterile: clean
 	rm -rf cmd/certs/*
 	touch cmd/certs/.placeholder
 
+distgen:
+	@cd template && $(MAKE) distgen
+
 gen:
 	@cd template && $(MAKE) gen
 
