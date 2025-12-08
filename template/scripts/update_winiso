@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+set -ueo pipefail
+
+dist_host=$1
+filename=$2
+destdir=$3
+cmd=$4
+
+url="https://$dist_host/pub/iso"
+destfile="${destdir}/${filename}"
+
+log() {
+    echo >&2 "$@"
+}
+
+file_checksum() {
+    awk -F '[)(= \t]*' -v filename=$1 '{ if($2 == filename) { print $NF } }'
+}
+
+get_local_checksum() {
+    if [ -e $destfile ]; then
+	local_checksum_file="${destdir}/SHA256"
+	if [ -e $local_checksum_file ]; then
+	    file_checksum $filename <$local_checksum_file
+	fi
+    fi
+}
+
+server_checksum=$(curl -s $url/SHA256 | file_checksum $filename)
+local_checksum=$(get_local_checksum)
+
+#log dist_host=$dist_host
+#log filename=$filename
+#log destdir=$destdir
+#log cmd=$cmd
+
+#log url=$url
+#log destfile=$destfile
+#log server_checksum=$server_checksum
+#log local_checksum=$local_checksum
+
+
+if [ "$server_checksum" != "$local_checksum" ]; then
+    sed -i -e "/($filename)/d" $destdir/SHA256
+    case $cmd in 
+	download)
+	    log downloading $url/$filename
+	    curl -o "${destdir}/${filename}" $url/$filename
+	    log "updating local checksum"
+	    curl -s $url/SHA256 | grep "($filename)" >>$destdir/SHA256
+	    log "download complete"
+	    ;;
+	upload)
+	    log uploading $url/$filename
+	    scp $destdir/$filename $hostname:iso/$filename
+	    log "calculating local checksum"
+	    ( cd $destdir; sha256 $filename >>SHA256; )
+	    log "upload complete"
+	    ;;
+    esac
+fi

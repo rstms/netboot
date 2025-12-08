@@ -12,9 +12,6 @@ openbsd_exec = $(if $(openbsd),$(1),@echo "not on openbsd; skipping: $(1)")
 linux_exec = $(if $(linux),$(1),@echo "not on linux; skipping: $(1)")
 windows_exec = $(if $(windows),$(1),@echo "not on windows; skipping: $(1)")
 
-dist_upload_host = $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host)
-curl_download = mkdir -p $(dir $(2)) && curl -L $(1) -o $(2) && test -s $(2)
-
 debian_mirror = ftp.us.debian.org
 
 debian-12-kernel = dist/debian/bookworm/amd64/linux
@@ -89,19 +86,16 @@ gen: $(dist_files) $(generated_files)
 regen: clean gen
 
 $(win11-iso):
-	$(call curl_download,https://$(dist_upload_host)/pub/iso/$(notdir $@),$@)
+	@scripts/update_winiso $(dist_upload_host) $(notdir $@) iso download
 
-ifeq ($(openbsd),1)
-$(customized-win11-iso):
-	$(call curl_download,https://$(dist_upload_host)/pub/iso/$(notdir $@),$@)
-endif
+dist_upload_host = $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host)
 
-ifeq ($(linux),1)
 $(customized-win11-iso): $(win11-iso)
 	$(call linux_exec,scripts/generate_windows_netboot $< $@)
-	$(if $(dist_upload_host),scp -p $@ $(dist_upload_host):iso/$(notdir $@),echo "dist_upload_host unset, skipping upload")
-endif
+	@$(call openbsd_exec,scripts/update_winiso $(dist_upload_host) $(notdir $@) iso download)
+	@$(if $(dist_upload_host),scripts/update_winiso $(dist_upload_host) $(notdir $@) iso upload)
 
+curl_download = mkdir -p $(dir $(2)) && curl -L $(1) -o $(2) && test -s $(2)
 
 $(debian-12-kernel):
 	$(call curl_download,http://$(debian_mirror)/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux,$@)
@@ -179,7 +173,7 @@ sterile: clean
 	rm -f $(generated_files)
 
 distclean:
-	find dist -type f -not -name 'gdl??.tgz' -exec rm \{\} \;
+	find dist -type f -exec rm \{\} \;
 	echo "# placeholder" >dist/README.md
 
 # only clean files that can be regenerated
