@@ -147,28 +147,28 @@ $(alpine-3221-modloop):
 certs/cacerts.tgz: $(ca_certs)
 	cd certs/debian && tar zcfv ../cacerts.tgz etc
 
-$(openbsd-75-netboot-iso): $(openbsd-75-iso) $(openbsd-75-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
+$(openbsd-75-netboot-iso): $(openbsd-75-iso) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
 	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.5 amd64 iso)
 
-$(openbsd-75-netboot-img): $(openbsd-75-netboot-iso)
+$(openbsd-75-netboot-img): $(openbsd-75-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
 	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.5 amd64 img)
 
-$(openbsd-76-netboot-iso): $(openbsd-76-iso) $(openbsd-76-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
+$(openbsd-76-netboot-iso): $(openbsd-76-iso) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
 	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.6 amd64 iso)
 
-$(openbsd-76-netboot-img): $(openbsd-76-netboot-iso)
+$(openbsd-76-netboot-img): $(openbsd-76-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
 	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.6 amd64 img)
 
-$(openbsd-77-netboot-iso): $(openbsd-77-iso) $(openbsd-77-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
+$(openbsd-77-netboot-iso): $(openbsd-77-iso) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
 	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.7 amd64 iso)
 
-$(openbsd-77-netboot-img): $(openbsd-77-netboot-iso)
+$(openbsd-77-netboot-img): $(openbsd-77-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
 	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.7 amd64 img)
 
-$(openbsd-78-netboot-iso): $(openbsd-78-iso) $(openbsd-78-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
+$(openbsd-78-netboot-iso): $(openbsd-78-iso) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
 	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.8 amd64 iso)
 
-$(openbsd-78-netboot-img): $(openbsd-78-netboot-iso)
+$(openbsd-78-netboot-img): $(openbsd-78-img) $(wildcard mkboot/*.openbsd) $(wildcard scripts/*)
 	$(call openbsd_exec,scripts/generate_openbsd_netboot 7.8 amd64 img)
 
 sterile: clean
