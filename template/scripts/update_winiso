@@ -40,6 +40,9 @@ local_checksum=$(get_local_checksum)
 #log server_checksum=$server_checksum
 #log local_checksum=$local_checksum
 
+if [ ! -f "$destfile" ]; then
+    log "$destfile is not present"
+fi
 
 if [ "$server_checksum" != "$local_checksum" ]; then
     sed -i -e "/($filename)/d" $destdir/SHA256
