@@ -8,9 +8,9 @@ openbsd = $(if $(shell uname | grep -i openbsd),1,)
 linux = $(if $(shell uname | grep -i linux),1,)
 
 # functions for running only on selected OS
-openbsd_exec = $(if $(openbsd),$(1),@echo "not on openbsd; skipping: $(1)")
-linux_exec = $(if $(linux),$(1),@echo "not on linux; skipping: $(1)")
-windows_exec = $(if $(windows),$(1),@echo "not on windows; skipping: $(1)")
+openbsd_exec = $(if $(openbsd),$(1),@echo "not on openbsd, skipping: $(1)")
+linux_exec = $(if $(linux),$(1),@echo "not on linux, skipping: $(1)")
+windows_exec = $(if $(windows),$(1),@echo "not on windows, skipping: $(1)")
 
 debian_mirror = ftp.us.debian.org
 
@@ -94,8 +94,8 @@ dist_upload_host = $(shell [ -e ~/.dist_upload_host ] && cat ~/.dist_upload_host
 
 $(customized-win11-iso): $(win11-iso)
 	$(call linux_exec,scripts/generate_windows_netboot $< $@)
-	@$(call openbsd_exec,scripts/update_winiso $(dist_upload_host) $(notdir $@) iso download)
-	@$(if $(dist_upload_host),scripts/update_winiso $(dist_upload_host) $(notdir $@) iso upload)
+	#$(call openbsd_exec,scripts/update_winiso $(dist_upload_host) $(notdir $@) iso download)
+	#$(if $(dist_upload_host),scripts/update_winiso $(dist_upload_host) $(notdir $@) iso upload)
 
 curl_download = mkdir -p $(dir $(2)) && curl -L $(1) --remote-time -o $(2) && test -s $(2)
 

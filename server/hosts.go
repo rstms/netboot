@@ -1371,12 +1371,13 @@ func (c *HostCache) DeleteWhitelistAddressHandlerTLS(w http.ResponseWriter, r *h
 
 func (c *HostCache) deleteWhitelist(ipaddr string) (string, bool) {
 	cmd := exec.Command("sh", "-c", c.whitelistCommand+" "+"delete "+ipaddr)
-	data, err := cmd.Output()
-	log.Printf("Whitelist delete: %v\n%s\n", cmd, string(data))
+	output, err := cmd.Output()
+	log.Printf("Whitelist delete: %v\n", cmd)
 	if err != nil {
 		log.Printf("failed: %v\n", err)
 		return "failed (see log for detail)", false
 	}
+	log.Printf("    output: '%s'\n", strings.TrimSpace(string(output)))
 	return "deleted: " + ipaddr, true
 }
 
