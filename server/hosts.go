@@ -186,6 +186,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 	log.Printf("ipxe dir: %s\n", c.ipxeDir)
 	log.Printf("dist dir: %s\n", c.distDir)
 	log.Printf("upload dir: %s\n", c.uploadDir)
+	log.Printf("whitelist lifetime: %d\n", c.whitelistLifetime)
 
 	return &c, nil
 }
