@@ -35,8 +35,15 @@ set -e
 
 disk_device() {
     # find first disk device excluding cdrom (cd0) and ramdisk (rd0)
-    sysctl hw.disknames | sed -e 's/^[^=]*=//' -e 's/,/\
-/g' -e 's/:.*//g' -e '/^[cr]d[0-9]/d' -e '/^sd[0-9]/q'
+    (
+	IFS=,
+	for drive in $(sysctl hw.disknames | sed 's/^[^=]*=//'); do
+	    echo $drive
+	done
+    ) | grep -v '^[cr]d[0-9]' | while read device; do
+	echo $device | sed 's/:.*//'
+	break
+    done 
 }
 
 make_disk_device_nodes() {
