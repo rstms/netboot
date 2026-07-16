@@ -35,7 +35,8 @@ set -e
 
 disk_device() {
     # find first disk device excluding cdrom (cd0) and ramdisk (rd0)
-    sysctl hw.disknames | sed 's/^[^=]*=//' | tr ',' '\n' | grep -v '^[cr]d[0-9]' | head -1 | sed 's/:.*//'
+    sysctl hw.disknames | sed -e 's/^[^=]*=//' -e 's/,/\
+/g' -e 's/:.*//g' -e '/^[cr]d[0-9]/d' -e '/^sd[0-9]/q'
 }
 
 make_disk_device_nodes() {
