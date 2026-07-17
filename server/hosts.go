@@ -53,6 +53,7 @@ var DIST_UPLOAD_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
 	regexp.MustCompile(`^pub/debian/[a-z]+/amd64/[[:word:].-]+`),
 	regexp.MustCompile(`^pub/OpenBSD/\d\.\d/packages/amd64/[[:word:].-]+`),
 	regexp.MustCompile(`^pub/windows/\d+/x64/[[:word:].-]+`),
+	regexp.MustCompile(`^pub/OpenBSD/\d\.\d/bin/amd64/[[:word:].-]+`),
 }
 
 var DIST_DELETE_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
@@ -684,7 +685,6 @@ func (c *HostCache) UploadDistHandlerTLS(w http.ResponseWriter, r *http.Request)
 
 	err := r.ParseMultipartForm(c.maxDistUploadMB << 20) // limit file size
 	if err != nil {
-		log.Printf("UploadDistFile failed: %v", err)
 		c.fail(w, fmt.Sprintf("failed parsing form: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -698,6 +698,7 @@ func (c *HostCache) UploadDistHandlerTLS(w http.ResponseWriter, r *http.Request)
 
 	distPathname := c.validateDistPathname(w, r, DIST_UPLOAD_PATTERNS)
 	if distPathname == "" {
+		c.fail(w, "invalid upload path", http.StatusBadRequest)
 		return
 	}
 
@@ -830,9 +831,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	}
 	config.Address = normalizeMAC(config.Address)
 
-	log.Printf("adding host %s %s %s\n", config.Address, config.OS, config.Version)
-
-	log.Printf("AddHostHandler setting MAC=%s IP=''\n", config.Address)
+	log.Printf("AddHostHandler: adding MAC=%s IP='' %s %s\n", config.Address, config.OS, config.Version)
 	c.cache[config.Address] = message.HostState{MAC: config.Address, State: "init"}
 
 	distNames, err := template.DistNames()
