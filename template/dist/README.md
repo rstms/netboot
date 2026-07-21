@@ -1,1 +1,17 @@
 # placeholder
+http://ftp.us.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux dist/debian/bookworm/amd64/linux
+http://ftp.us.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz dist/debian/bookworm/amd64/initrd.gz
+http://ftp.us.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux dist/debian/trixie/amd64/linux
+http://ftp.us.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz dist/debian/trixie/amd64/initrd.gz
+https://ftp.openbsd.org/pub/OpenBSD/7.7/amd64/cd77.iso dist/openbsd/7.7/amd64/cd77.iso
+https://ftp.openbsd.org/pub/OpenBSD/7.7/amd64/miniroot77.img dist/openbsd/7.7/amd64/miniroot77.img
+https://ftp.openbsd.org/pub/OpenBSD/7.8/amd64/cd78.iso dist/openbsd/7.8/amd64/cd78.iso
+https://ftp.openbsd.org/pub/OpenBSD/7.8/amd64/miniroot78.img dist/openbsd/7.8/amd64/miniroot78.img
+https://ftp.openbsd.org/pub/OpenBSD/7.9/amd64/cd79.iso dist/openbsd/7.9/amd64/cd79.iso
+https://ftp.openbsd.org/pub/OpenBSD/7.9/amd64/miniroot79.img dist/openbsd/7.9/amd64/miniroot79.img
+https://dl-cdn.alpinelinux.org/v3.22/releases/x86_64/netboot-3.22.1/vmlinuz-virt dist/alpine/3.22.1/x86_64/kernel
+https://dl-cdn.alpinelinux.org/v3.22/releases/x86_64/netboot-3.22.1/initramfs-virt dist/alpine/3.22.1/x86_64/initrd
+https://dl-cdn.alpinelinux.org/v3.22/releases/x86_64/netboot-3.22.1/modloop-virt dist/alpine/3.22.1/x86_64/modloop
+https://dl-cdn.alpinelinux.org/v3.23/releases/x86_64/netboot-3.23.4/vmlinuz-virt dist/alpine/3.23.4/x86_64/kernel
+https://dl-cdn.alpinelinux.org/v3.23/releases/x86_64/netboot-3.23.4/initramfs-virt dist/alpine/3.23.4/x86_64/initrd
+https://dl-cdn.alpinelinux.org/v3.23/releases/x86_64/netboot-3.23.4/modloop-virt dist/alpine/3.23.4/x86_64/modloop

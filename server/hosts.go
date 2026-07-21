@@ -189,6 +189,21 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 	log.Printf("upload dir: %s\n", c.uploadDir)
 	log.Printf("whitelist lifetime: %d\n", c.whitelistLifetime)
 
+	distFiles, err := template.DistInitFiles()
+	if err != nil {
+		return nil, err
+	}
+	distRoot, err := os.OpenRoot(c.distDir)
+	if err != nil {
+		return nil, Fatal(err)
+	}
+	for _, df := range distFiles {
+		err := DownloadDistFile(distRoot, df.URL, df.Pathname)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &c, nil
 }
 
@@ -372,8 +387,8 @@ func (c *HostCache) GDLHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	}
 	major := parts[1]
 	minor := parts[2]
-	gdlPathname := filepath.Join("dist", "openbsd", version, arch, fmt.Sprintf("gdl%s%s.tgz", major, minor))
-	http.ServeFileFS(w, r, template.Dist, gdlPathname)
+	gdlPathname := filepath.Join("openbsd", version, arch, fmt.Sprintf("gdl%s%s.tgz", major, minor))
+	http.ServeFileFS(w, r, os.DirFS(c.distDir), gdlPathname)
 }
 
 func (c *HostCache) checkPath(prefix string, w http.ResponseWriter, r *http.Request) (string, string, bool) {
@@ -808,7 +823,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if config.Address == BOOTSTRAP_MAC_ADDRESS {
-		version, arch, mirror, err := DefaultDist("alpine")
+		version, arch, mirror, err := DefaultDist(c.distDir, "alpine")
 		if err != nil {
 			Warning("%v", Fatal(err))
 			c.fail(w, "failed generating bootstrap iso", http.StatusInternalServerError)
@@ -834,7 +849,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	log.Printf("AddHostHandler: adding MAC=%s IP='' %s %s\n", config.Address, config.OS, config.Version)
 	c.cache[config.Address] = message.HostState{MAC: config.Address, State: "init"}
 
-	distNames, err := template.DistNames()
+	distNames, err := template.DistNames(c.distDir)
 	if err != nil {
 		Warning("%v", Fatal(err))
 		c.fail(w, "failed DistNames lookup", http.StatusInternalServerError)
@@ -848,7 +863,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	distVersions, err := template.DistVersions(config.OS)
+	distVersions, err := template.DistVersions(c.distDir, config.OS)
 	if err != nil {
 		Warning("%v", Fatal(err))
 		c.fail(w, "failed verifying OS version", http.StatusInternalServerError)
@@ -879,7 +894,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	if config.AlpineLoader != "" {
 		// if AlpineLoader active, write ipxe/MAC.ipxe
 		// from alpine-autoexec.ipxe for alpine image load
-		version, arch, mirror, err := DefaultDist("alpine")
+		version, arch, mirror, err := DefaultDist(c.distDir, "alpine")
 		if err != nil {
 			Warning("%v", Fatal(err))
 			c.fail(w, "failed selecting image loader dist", http.StatusInternalServerError)
@@ -1280,7 +1295,7 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 		return "", []string{}, Fatal(err)
 	}
 
-	mkboot := NewMkBoot(tempDir, c.ipxeDir, url, &bootFiles, config)
+	mkboot := NewMkBoot(tempDir, c.ipxeDir, c.distDir, url, &bootFiles, config)
 	isoFile, err := mkboot.Generate()
 	if err != nil {
 		return "", []string{}, Fatal(err)

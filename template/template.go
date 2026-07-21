@@ -3,6 +3,7 @@ package template
 import (
 	"embed"
 	"io/fs"
+	"os"
 	"path"
 	"slices"
 	"strings"
@@ -14,11 +15,40 @@ var Ipxe embed.FS
 //go:embed mkboot
 var Mkboot embed.FS
 
-//go:embed dist
-var Dist embed.FS
+//go:embed dist/README.md
+var distReadme []byte
 
-func DistNames() ([]string, error) {
-	paths, err := fs.Glob(Dist, "dist/*")
+type DistFile struct {
+	URL      string
+	Pathname string
+}
+
+func DistInitFiles() ([]DistFile, error) {
+	lines := strings.Split(string(distReadme), "\n")
+	files := []DistFile{}
+	for _, line := range lines {
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		url, filename, ok := strings.Cut(line, " ")
+		if !ok {
+			return nil, Fatalf("failed parsing dist/README.md: %s\n", line)
+		}
+		_, target, ok := strings.Cut(filename, "/")
+		if !ok {
+			return nil, Fatalf("failed parsing dist filename: %s\n", filename)
+		}
+		files = append(files, DistFile{URL: url, Pathname: target})
+	}
+	return files, nil
+}
+
+func DistNames(distDir string) ([]string, error) {
+	paths, err := fs.Glob(os.DirFS(distDir), "*")
 	if err != nil {
 		return []string{}, Fatal(err)
 	}
@@ -33,9 +63,8 @@ func DistNames() ([]string, error) {
 	return osList, nil
 }
 
-func DistVersions(distName string) ([]string, error) {
-	distPath := path.Join("dist", distName)
-	versionPaths, err := fs.Glob(Dist, path.Join(distPath, "*"))
+func DistVersions(distDir, distName string) ([]string, error) {
+	versionPaths, err := fs.Glob(os.DirFS(distDir), path.Join(distName, "*"))
 	if err != nil {
 		return []string{}, Fatal(err)
 	}

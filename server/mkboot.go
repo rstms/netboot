@@ -26,16 +26,18 @@ const NO_GENERATE_IMAGE = false
 type MkBoot struct {
 	TempDir   string
 	IpxeDir   string
+	DistDir   string
 	URL       string
 	BootFiles *[]string
 	Config    *message.NetbootConfig
 	ISO       string
 }
 
-func NewMkBoot(tempDir, ipxeDir, url string, bootFiles *[]string, config *message.NetbootConfig) *MkBoot {
+func NewMkBoot(tempDir, ipxeDir, distDir, url string, bootFiles *[]string, config *message.NetbootConfig) *MkBoot {
 	m := MkBoot{
 		TempDir:   tempDir,
 		IpxeDir:   ipxeDir,
+		DistDir:   distDir,
 		URL:       url,
 		BootFiles: bootFiles,
 		Config:    config,
@@ -90,13 +92,13 @@ func (m *MkBoot) Generate() (string, error) {
 	return m.ISO, nil
 }
 
-func (m *MkBoot) checkDistDir(os, version, arch string) (string, error) {
-	log.Printf("checkDistDir: os=%s version=%s arch=%s\n", os, version, arch)
+func (m *MkBoot) checkDistDir(osName, version, arch string) (string, error) {
+	log.Printf("checkDistDir: os=%s version=%s arch=%s\n", osName, version, arch)
 	// generate error if version/arch not present
-	distDir := filepath.Join("dist", os, version, arch)
+	distDir := filepath.Join(m.DistDir, osName, version, arch)
 	log.Printf("checking distDir: %s\n", distDir)
-	if !files.IsDirFS(template.Dist, distDir) {
-		return "", Fatalf("unsupported: %s %s %s", os, version, arch)
+	if !files.IsDir(distDir) {
+		return "", Fatalf("unsupported: %s %s %s", osName, version, arch)
 	}
 	return distDir, nil
 }
@@ -138,9 +140,8 @@ func SemverSort(unsorted []string, pattern *regexp.Regexp) ([]string, error) {
 	return sorted, nil
 }
 
-func DefaultDist(os string) (string, string, string, error) {
-	distDir := path.Join("dist", os)
-	versionEntries, err := fs.ReadDir(template.Dist, distDir)
+func DefaultDist(distDir, osName string) (string, string, string, error) {
+	versionEntries, err := fs.ReadDir(os.DirFS(distDir), osName)
 	if err != nil {
 		return "", "", "", Fatal(err)
 	}
@@ -149,7 +150,7 @@ func DefaultDist(os string) (string, string, string, error) {
 		versions = append(versions, entry.Name())
 	}
 	if len(versions) < 1 {
-		return "", "", "", Fatalf("no dist dirs found for os: %s", os)
+		return "", "", "", Fatalf("no dist dirs found for os: %s", osName)
 	}
 	sortedVersions, err := SemverSort(versions, VERSION_PATTERN)
 	if err != nil {
@@ -157,17 +158,17 @@ func DefaultDist(os string) (string, string, string, error) {
 	}
 	version := sortedVersions[0]
 
-	archEntries, err := fs.ReadDir(template.Dist, path.Join(distDir, version))
+	archEntries, err := fs.ReadDir(os.DirFS(distDir), path.Join(osName, version))
 	if err != nil {
 		return "", "", "", Fatal(err)
 	}
 	if len(archEntries) < 1 {
-		return "", "", "", Fatalf("no arch dirs found for os:%s version:%s\n", os, version)
+		return "", "", "", Fatalf("no arch dirs found for os:%s version:%s\n", osName, version)
 	}
 	arch := archEntries[0].Name()
 
 	var mirror string
-	switch os {
+	switch osName {
 	case "alpine":
 		mirror = DEFAULT_ALPINE_MIRROR
 	case "debian":
@@ -175,10 +176,10 @@ func DefaultDist(os string) (string, string, string, error) {
 	case "openbsd":
 		mirror = DEFAULT_OPENBSD_MIRROR
 	default:
-		return "", "", "", Fatalf("unexpected os: %s\n", os)
+		return "", "", "", Fatalf("unexpected os: %s\n", osName)
 	}
 
-	log.Printf("DefaultDist(%s) returning version=%s arch=%s mirror=%s\n", os, version, arch, mirror)
+	log.Printf("DefaultDist(%s) returning version=%s arch=%s mirror=%s\n", osName, version, arch, mirror)
 
 	return version, arch, mirror, nil
 }
@@ -269,7 +270,7 @@ func (m *MkBoot) mkbootDebian() error {
 	srcKernel := filepath.Join(distDir, "linux")
 	dstKernel := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
 	log.Printf("mkbootDebian: kernel=%s\n", dstKernel)
-	err = files.CopyFileFromFS(dstKernel, srcKernel, template.Dist)
+	err = files.CopyFileFromFS(dstKernel, srcKernel, os.DirFS(m.DistDir))
 	if err != nil {
 		return Fatal(err)
 	}
@@ -278,7 +279,7 @@ func (m *MkBoot) mkbootDebian() error {
 	srcInitrd := filepath.Join(distDir, "initrd.gz")
 	dstInitrd := filepath.Join(m.IpxeDir, m.Config.Address+".initrd")
 	log.Printf("mkbootDebian: initrd=%s\n", dstInitrd)
-	err = files.CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
+	err = files.CopyFileFromFS(dstInitrd, srcInitrd, os.DirFS(m.DistDir))
 	if err != nil {
 		return Fatal(err)
 	}
@@ -305,7 +306,7 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	var err error
 
 	if imageLoader {
-		version, arch, mirror, err = DefaultDist("alpine")
+		version, arch, mirror, err = DefaultDist(m.DistDir, "alpine")
 		if err != nil {
 			return Fatal(err)
 		}
@@ -327,7 +328,7 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	srcKernel := filepath.Join(distDir, "kernel")
 	dstKernel := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
 	log.Printf("mkbootAlpine: kernel=%s\n", dstKernel)
-	err = files.CopyFileFromFS(dstKernel, srcKernel, template.Dist)
+	err = files.CopyFileFromFS(dstKernel, srcKernel, os.DirFS(m.DistDir))
 	if err != nil {
 		return Fatal(err)
 	}
@@ -336,7 +337,7 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	srcInitrd := filepath.Join(distDir, "initrd")
 	dstInitrd := filepath.Join(m.IpxeDir, m.Config.Address+".initrd")
 	log.Printf("mkbootAlpine: initrd=%s\n", dstInitrd)
-	err = files.CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
+	err = files.CopyFileFromFS(dstInitrd, srcInitrd, os.DirFS(m.DistDir))
 	if err != nil {
 		return Fatal(err)
 	}
@@ -345,7 +346,7 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	srcModloop := filepath.Join(distDir, "modloop")
 	dstModloop := filepath.Join(m.IpxeDir, m.Config.Address+".modloop")
 	log.Printf("mkbootAlpine: modloop=%s\n", dstModloop)
-	err = files.CopyFileFromFS(dstModloop, srcModloop, template.Dist)
+	err = files.CopyFileFromFS(dstModloop, srcModloop, os.DirFS(m.DistDir))
 	if err != nil {
 		return Fatal(err)
 	}

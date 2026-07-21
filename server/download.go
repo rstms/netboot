@@ -128,3 +128,60 @@ func DownloadFileRoot(root *os.Root, mirrorUrl, requestPath string) (string, []b
 	log.Printf("ok (%d bytes)\n", count)
 	return pathname, buf, nil
 }
+
+func DownloadDistFile(root *os.Root, sourceUrl, pathName string) error {
+
+	if IsDirRoot(root, pathName) {
+		return Fatalf("refusing to clobber existing directory: %s", pathName)
+	}
+	if IsFileRoot(root, pathName) {
+		log.Printf("dist file: %s\n", pathName)
+		return nil
+	}
+
+	parsed, err := url.Parse(sourceUrl)
+	if err != nil {
+		return Fatal(err)
+	}
+	client := &http.Client{}
+	switch parsed.Scheme {
+	case "http":
+	case "https":
+		certPool, err := x509.SystemCertPool()
+		if err != nil {
+			return Fatal(err)
+		}
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: certPool},
+		}
+	default:
+		return Fatalf("unexpected scheme: %s", sourceUrl)
+	}
+
+	dir, _ := filepath.Split(pathName)
+	if dir != "" {
+		err := MkdirAllRoot(root, dir)
+		if err != nil {
+			return Fatal(err)
+		}
+	}
+	file, err := root.Create(pathName)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer file.Close()
+
+	log.Printf("downloading %s\n", sourceUrl)
+	response, err := client.Get(sourceUrl)
+	if err != nil {
+		return Fatal(err)
+	}
+	defer response.Body.Close()
+
+	count, err := io.Copy(file, response.Body)
+	if err != nil {
+		return Fatal(err)
+	}
+	log.Printf("ok (%d bytes)\n", count)
+	return nil
+}
