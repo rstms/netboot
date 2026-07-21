@@ -15,7 +15,7 @@ var Ipxe embed.FS
 //go:embed mkboot
 var Mkboot embed.FS
 
-//go:embed dist/README.md
+//go:embed dist_init_files
 var distReadme []byte
 
 type DistFile struct {

@@ -86,26 +86,27 @@ const htmlSuffix = `
 `
 
 type HostCache struct {
-	Name              string
-	cacheDir          string
-	ipxeDir           string
-	distDir           string
-	uploadDir         string
-	cache             map[string]message.HostState
-	bootstrapCache    map[string]message.HostState
-	httpPort          int
-	httpsPort         int
-	proxy             bool
-	noDeleteIpxe      bool
-	mirrorUrl         map[string]string
-	httpURL           string
-	httpsURL          string
-	whitelistCommand  string
-	isoKeys           map[string]string
-	isoKeyLifetime    int
-	isoMode           map[string]string
-	whitelistLifetime int
-	maxDistUploadMB   int64
+	Name                 string
+	cacheDir             string
+	ipxeDir              string
+	distDir              string
+	uploadDir            string
+	cache                map[string]message.HostState
+	bootstrapCache       map[string]message.HostState
+	httpPort             int
+	httpsPort            int
+	proxy                bool
+	noDeleteIpxe         bool
+	mirrorUrl            map[string]string
+	httpURL              string
+	httpsURL             string
+	whitelistCommand     string
+	whitelistExpirations map[string]uint64
+	isoKeys              map[string]string
+	isoKeyLifetime       int
+	isoMode              map[string]string
+	whitelistLifetime    int
+	maxDistUploadMB      int64
 }
 
 func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*HostCache, error) {
@@ -147,14 +148,15 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 			"debian-security": ViperGetString(prefix + "mirror.debian-security"),
 			"openbsd":         ViperGetString(prefix + "mirror.openbsd"),
 		},
-		httpURL:           ViperGetString(prefix + "http_url"),
-		httpsURL:          ViperGetString(prefix + "https_url"),
-		whitelistCommand:  ViperGetString(prefix + "whitelist_command"),
-		whitelistLifetime: ViperGetInt(prefix + "whitelist_lifetime"),
-		isoKeys:           make(map[string]string),
-		isoMode:           make(map[string]string),
-		isoKeyLifetime:    ViperGetInt(prefix + "iso_key_lifetime"),
-		maxDistUploadMB:   ViperGetInt64(prefix + "max_dist_upload_mb"),
+		httpURL:              ViperGetString(prefix + "http_url"),
+		httpsURL:             ViperGetString(prefix + "https_url"),
+		whitelistCommand:     ViperGetString(prefix + "whitelist_command"),
+		whitelistExpirations: make(map[string]uint64),
+		whitelistLifetime:    ViperGetInt(prefix + "whitelist_lifetime"),
+		isoKeys:              make(map[string]string),
+		isoMode:              make(map[string]string),
+		isoKeyLifetime:       ViperGetInt(prefix + "iso_key_lifetime"),
+		maxDistUploadMB:      ViperGetInt64(prefix + "max_dist_upload_mb"),
 	}
 	if !IsDir(c.ipxeDir) {
 		err := os.MkdirAll(c.ipxeDir, 0700)

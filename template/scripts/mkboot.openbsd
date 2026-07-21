@@ -7,24 +7,27 @@ set -ue
 echo "Generating OpenBSD netboot ISO"
 
 TEMPLATE_ROOT=$1
-OSREV=$2
-MACHINE=$3
-MKBOOT_USER=$4
-SERIAL=$5
-TARGET=$6
+DIST_ROOT=$2
+OSREV=$3
+MACHINE=$4
+MKBOOT_USER=$5
+SERIAL=$6
+TARGET=$7
 
 # calculated extra buffer blocks for image root filesystem
 magic_buffer_blocks=700
 
 # argument examples:
 #
-# REPO_ROOT=/home/mkrueger/go/src/github.com/rstms/netboot
+# TEMPLATE_ROOT=/home/mkrueger/go/src/github.com/rstms/netboot/template
+# DIST_ROOT=/home/mkrueger/.cache/netboot/dist
 # OSREV=7.5
 # MACHINE=amd64
 # MKBOOT_USER=mkrueger
 # TARGET=iso
 
 echo TEMPLATE_ROOT=$TEMPLATE_ROOT
+echo DIST_ROOT=$DIST_ROOT
 echo OSREV=$OSREV
 echo MACHINE=$MACHINE
 echo MKBOOT_USER=$MKBOOT_USER
@@ -43,17 +46,23 @@ case $OS in
 esac 
 
 [ -n "$TEMPLATE_ROOT" ] || fail "no TEMPLATE_ROOT"
+[ -n "$DIST_ROOT" ] || fail "no DIST_ROOT"
 [ -n "$OSREV" ] || fail "no OSREV (version)"
 [ -n "$MACHINE" ] || "fail no MACHINE (arch)"
 [ -n "$MKBOOT_USER" ] || "fail no MKBOOT_USER"
 
 TAG=$(tr <<<$OSREV -d '.')
-SRC_ISO=$TEMPLATE_ROOT/dist/openbsd/$OSREV/$MACHINE/cd${TAG}.iso
+SRC_ISO=$DIST_ROOT/openbsd/$OSREV/$MACHINE/cd${TAG}.iso
 DST_ISO=$TEMPLATE_ROOT/ipxe/openbsd-$OSREV-$MACHINE.iso
-SRC_IMG=$TEMPLATE_ROOT/dist/openbsd/$OSREV/$MACHINE/miniroot${TAG}.img
+SRC_IMG=$DIST_ROOT/openbsd/$OSREV/$MACHINE/miniroot${TAG}.img
 DST_IMG=$TEMPLATE_ROOT/ipxe/openbsd-$OSREV-$MACHINE.img
 DST_RD=$TEMPLATE_ROOT/ipxe/bsd-$OSREV-$MACHINE.rd
 RC_NETBOOT=$TEMPLATE_ROOT/mkboot/rc.netboot.openbsd
+
+# error if source files not present
+stat $SRC_ISO
+stat $SRC_IMG
+stat $RC_NETBOOT
 
 DIR=$(mktemp -td netboot-mkboot-openbsd-XXXXXXXXX)
 RD=$DIR/rd
