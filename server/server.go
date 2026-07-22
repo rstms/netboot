@@ -46,7 +46,7 @@ type NetbootServer struct {
 	hosts                  *HostCache
 	wg                     sync.WaitGroup
 	shutdown               chan struct{}
-	NetbootDir             string
+	CacheDir               string
 	caFile                 string
 	certFile               string
 	keyFile                string
@@ -106,7 +106,7 @@ func NewNetbootServer() (*NetbootServer, error) {
 		verbose:                ViperGetBool(viperPrefix + "verbose"),
 		debug:                  ViperGetBool(viperPrefix + "debug"),
 		shutdown:               make(chan struct{}, 1),
-		NetbootDir:             ViperGetString(viperPrefix + "cache_dir"),
+		CacheDir:               ViperGetString(viperPrefix + "cache_dir"),
 		shutdownTimeoutSeconds: ViperGetInt(viperPrefix + "shutdown_timeout_seconds"),
 		proxy:                  ViperGetBool(viperPrefix + "enable_proxy"),
 		caFile:                 ViperGetString(viperPrefix + "ca"),
@@ -115,7 +115,7 @@ func NewNetbootServer() (*NetbootServer, error) {
 		enableMenu:             ViperGetBool(viperPrefix + "menu"),
 	}
 
-	hostCache, err := NewHostCache(s.NetbootDir, s.HttpPort, s.HttpsPort, s.proxy)
+	hostCache, err := NewHostCache(s.CacheDir, s.HttpPort, s.HttpsPort, s.proxy)
 	if err != nil {
 		return nil, err
 	}

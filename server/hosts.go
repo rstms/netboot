@@ -30,6 +30,7 @@ const DEFAULT_DEBIAN_SECURITY_MIRROR = "http://security.debian.org"
 const DEFAULT_OPENBSD_MIRROR = "https://ftp.openbsd.org"
 const DEFAULT_ALPINE_MIRROR = "https://dl-cdn.alpinelinux.org"
 const DEFAULT_ISO_KEY_LIFETIME = 600
+const WHITELIST_TIMEOUT_INTERVAL = 30
 const DEFAULT_WHITELIST_LIFETIME = 3600
 const DEFAULT_MAX_DIST_UPLOAD_MB = 1024
 
@@ -100,8 +101,9 @@ type HostCache struct {
 	mirrorUrl            map[string]string
 	httpURL              string
 	httpsURL             string
+	whitelistExpirations map[string]time.Time
 	whitelistCommand     string
-	whitelistExpirations map[string]uint64
+	whitelistTicker      *time.Ticker
 	isoKeys              map[string]string
 	isoKeyLifetime       int
 	isoMode              map[string]string
@@ -151,7 +153,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 		httpURL:              ViperGetString(prefix + "http_url"),
 		httpsURL:             ViperGetString(prefix + "https_url"),
 		whitelistCommand:     ViperGetString(prefix + "whitelist_command"),
-		whitelistExpirations: make(map[string]uint64),
+		whitelistExpirations: make(map[string]time.Time),
 		whitelistLifetime:    ViperGetInt(prefix + "whitelist_lifetime"),
 		isoKeys:              make(map[string]string),
 		isoMode:              make(map[string]string),
@@ -191,6 +193,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 	log.Printf("upload dir: %s\n", c.uploadDir)
 	log.Printf("whitelist lifetime: %d\n", c.whitelistLifetime)
 
+	// download dist files from embedded list
 	distFiles, err := template.DistInitFiles()
 	if err != nil {
 		return nil, err
@@ -275,6 +278,7 @@ func (c *HostCache) validateHttpRequest(w http.ResponseWriter, r *http.Request) 
 	// FIXME: source address filtering goes here
 	log.Printf("[%s] %s -> HTTP %s %s\n", c.Name, r.RemoteAddr, r.Method, r.URL.Path)
 	//log.Printf("headers: %s\n", FormatJSON(r.Header))
+	c.bumpWhitelistExpiration(r)
 	return true
 }
 
@@ -290,6 +294,7 @@ func (c *HostCache) requireClientCert(w http.ResponseWriter, r *http.Request) bo
 		c.fail(w, "authorization failed", http.StatusForbidden)
 		return false
 	}
+	c.bumpWhitelistExpiration(r)
 	return true
 }
 
@@ -300,6 +305,7 @@ func (c *HostCache) optionalClientCert(w http.ResponseWriter, r *http.Request) *
 		clientCN = cert.Subject.String()
 	}
 	log.Printf("[%s] %s %s -> HTTPS %s %s\n", c.Name, r.RemoteAddr, clientCN, r.Method, r.URL.Path)
+	c.bumpWhitelistExpiration(r)
 	return cert
 }
 
@@ -381,16 +387,19 @@ func (c *HostCache) GDLHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		c.fail(w, "invalid path", http.StatusBadRequest)
 		return
 	}
-	parts := regexp.MustCompile(`^([0-9]+)\.([0-9]+)$`).FindStringSubmatch(version)
-	if len(parts) != 3 {
-		Warning("invalid gdl version: %s", r.URL.Path)
+	if !regexp.MustCompile(`^([0-9]+)\.([0-9]+)$`).MatchString(version) {
+		Warning("invalid gdl version: %s", version)
 		c.fail(w, "invalid path", http.StatusBadRequest)
 		return
 	}
-	major := parts[1]
-	minor := parts[2]
-	gdlPathname := filepath.Join("openbsd", version, arch, fmt.Sprintf("gdl%s%s.tgz", major, minor))
-	http.ServeFileFS(w, r, os.DirFS(c.distDir), gdlPathname)
+	gdlPathname, err := c.gdlUrl("", version, arch)
+	if err != nil {
+		Warning("gdl path generation failed: %v", err)
+		c.fail(w, "invalid gdl path", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("gdlPathname=%s\n", gdlPathname)
+	http.ServeFileFS(w, r, os.DirFS(c.uploadDir), gdlPathname)
 }
 
 func (c *HostCache) checkPath(prefix string, w http.ResponseWriter, r *http.Request) (string, string, bool) {
@@ -518,7 +527,6 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.Request) {
-
 	if !c.proxy {
 		Warning("disabled proxy received request: %s", mirror)
 		c.fail(w, "netboot proxy disabled", http.StatusNotImplemented)
@@ -824,6 +832,8 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	config.OS = strings.ToLower(config.OS)
+
 	if config.Address == BOOTSTRAP_MAC_ADDRESS {
 		version, arch, mirror, err := DefaultDist(c.distDir, "alpine")
 		if err != nil {
@@ -848,7 +858,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	}
 	config.Address = normalizeMAC(config.Address)
 
-	log.Printf("AddHostHandler: adding MAC=%s IP='' %s %s\n", config.Address, config.OS, config.Version)
+	log.Printf("AddHostHandler: adding MAC=%s IP='' OS=%s Version=%s\n", config.Address, config.OS, config.Version)
 	c.cache[config.Address] = message.HostState{MAC: config.Address, State: "init"}
 
 	distNames, err := template.DistNames(c.distDir)
@@ -1308,7 +1318,6 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 
 func (c *HostCache) gdlUrl(url, version, arch string) (string, error) {
 	gdlPath := filepath.Join(c.uploadDir, "pub", "OpenBSD", version, "packages", arch)
-	log.Printf("gdlPath=%s\n", filepath.Join(c.uploadDir, gdlPath))
 	files, err := files.TreeFiles(c.uploadDir, gdlPath)
 	if err != nil {
 		return "", Fatal(err)
@@ -1320,7 +1329,7 @@ func (c *HostCache) gdlUrl(url, version, arch string) (string, error) {
 		}
 	}
 	if len(gdlFiles) < 1 {
-		return "", Fatalf("no gdl file found for OpenBSD %s %s", version, arch)
+		return "", Fatalf("missing rstms-gdl package for OpenBSD %s %s", version, arch)
 	}
 	sortedFiles, err := SemverSort(gdlFiles, GDL_VERSION_PATTERN)
 	if err != nil {
@@ -1347,7 +1356,7 @@ func (c *HostCache) AddWhitelistAddressHandlerTLS(w http.ResponseWriter, r *http
 		return
 	}
 	if c.whitelistCommand == "" {
-		c.respond(w, "WhitelistAddressResponse", message.NetbootResponse{Message: "not configured"})
+		c.fail(w, "WhitelistAddressResponse", http.StatusInternalServerError)
 		return
 	}
 	ip := r.PathValue("ip")
@@ -1359,14 +1368,49 @@ func (c *HostCache) AddWhitelistAddressHandlerTLS(w http.ResponseWriter, r *http
 		c.fail(w, "failed (see netboot log for detail)", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Whitelist add: %s\n%s\n", ip, string(data))
-	go func() {
-		timeout := time.NewTimer(time.Duration(uint64(c.whitelistLifetime)) * time.Second)
-		<-timeout.C
-		msg, _ := c.deleteWhitelist(ip)
-		log.Printf("whitelist expired: %s\n", msg)
-	}()
+	log.Printf("Whitelist add: %sn%s\n", ip, string(data))
+	c.updateWhitelistExpiration(ip)
 	c.respond(w, "WhitelistAddressResponse", message.NetbootResponse{Message: "whitelisted: " + ip})
+}
+
+func (c *HostCache) bumpWhitelistExpiration(r *http.Request) {
+	ip, _, _ := strings.Cut(r.RemoteAddr, ":")
+	_, whitelisted := c.whitelistExpirations[ip]
+	if whitelisted {
+		c.updateWhitelistExpiration(ip)
+	}
+}
+
+func (c *HostCache) updateWhitelistExpiration(ip string) {
+	c.whitelistExpirations[ip] = time.Now().Add(time.Duration(uint64(c.whitelistLifetime)) * time.Second)
+	log.Printf("updateWhitelistExpiration(%s) %+v\n", ip, c.whitelistExpirations)
+	if c.whitelistTicker == nil {
+		go func() {
+			c.whitelistTicker = time.NewTicker(WHITELIST_TIMEOUT_INTERVAL * time.Second)
+			defer func() {
+				c.whitelistTicker.Stop()
+				c.whitelistTicker = nil
+			}()
+			for {
+				<-c.whitelistTicker.C
+				timeNow := time.Now()
+				expired := []string{}
+				for ip, expireTime := range c.whitelistExpirations {
+					if timeNow.After(expireTime) {
+						expired = append(expired, ip)
+					}
+				}
+				for _, ip := range expired {
+					msg, _ := c.deleteWhitelist(ip)
+					log.Printf("whitelist expired: %s\n", msg)
+				}
+				if len(c.whitelistExpirations) == 0 {
+					// no more ips to expire
+					return
+				}
+			}
+		}()
+	}
 }
 
 func (c *HostCache) DeleteWhitelistAddressHandlerTLS(w http.ResponseWriter, r *http.Request) {
@@ -1383,10 +1427,12 @@ func (c *HostCache) DeleteWhitelistAddressHandlerTLS(w http.ResponseWriter, r *h
 		c.fail(w, msg, http.StatusInternalServerError)
 		return
 	}
+	log.Printf("whitelist deleted: %s\n", msg)
 	c.respond(w, "WhitelistAddressResponse", message.NetbootResponse{Message: msg})
 }
 
 func (c *HostCache) deleteWhitelist(ipaddr string) (string, bool) {
+	delete(c.whitelistExpirations, ipaddr)
 	cmd := exec.Command("sh", "-c", c.whitelistCommand+" "+"delete "+ipaddr)
 	output, err := cmd.Output()
 	log.Printf("Whitelist delete: %v\n", cmd)

@@ -114,22 +114,22 @@ $(debian-13-initrd):
 	$(call curl_download,http://$(debian_mirror)/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz,$@)
 
 $(openbsd-77-iso):
-	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.7/amd64/cd77.iso,$@)
+	$(call curl_download,https://$(openbsd_mirror)/pub/openbsd/7.7/amd64/cd77.iso,$@)
 
 $(openbsd-77-img):
-	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.7/amd64/miniroot77.img,$@)
+	$(call curl_download,https://$(openbsd_mirror)/pub/openbsd/7.7/amd64/miniroot77.img,$@)
 
 $(openbsd-78-iso):
-	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.8/amd64/cd78.iso,$@)
+	$(call curl_download,https://$(openbsd_mirror)/pub/openbsd/7.8/amd64/cd78.iso,$@)
 
 $(openbsd-78-img):
-	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.8/amd64/miniroot78.img,$@)
+	$(call curl_download,https://$(openbsd_mirror)/pub/openbsd/7.8/amd64/miniroot78.img,$@)
 
 $(openbsd-79-iso):
-	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.9/amd64/cd79.iso,$@)
+	$(call curl_download,https://$(openbsd_mirror)/pub/openbsd/7.9/amd64/cd79.iso,$@)
 
 $(openbsd-79-img):
-	$(call curl_download,https://$(openbsd_mirror)/pub/OpenBSD/7.9/amd64/miniroot79.img,$@)
+	$(call curl_download,https://$(openbsd_mirror)/pub/openbsd/7.9/amd64/miniroot79.img,$@)
 
 
 $(alpine-3221-kernel):

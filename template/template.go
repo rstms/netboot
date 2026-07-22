@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -23,6 +24,27 @@ type DistFile struct {
 	Pathname string
 }
 
+// remove path elements preceeding and including 'dist'
+func mungeDistPath(target string) (string, error) {
+	found := false
+	elements := []string{}
+	for _, element := range strings.Split(filepath.Clean(target), string(filepath.Separator)) {
+		if found {
+			elements = append(elements, element)
+		}
+		if element == "dist" {
+			found = true
+		}
+	}
+	if !found {
+		return "", Fatalf("missing 'dist' element: %s", target)
+	}
+	if len(elements) == 0 {
+		return "", Fatalf("unexpected dist path: %s", target)
+	}
+	return filepath.Join(elements...), nil
+}
+
 func DistInitFiles() ([]DistFile, error) {
 	lines := strings.Split(string(distReadme), "\n")
 	files := []DistFile{}
@@ -34,15 +56,16 @@ func DistInitFiles() ([]DistFile, error) {
 		if line == "" {
 			continue
 		}
-		url, filename, ok := strings.Cut(line, " ")
+		url, target, ok := strings.Cut(line, " ")
 		if !ok {
-			return nil, Fatalf("failed parsing dist/README.md: %s\n", line)
+			return nil, Fatalf("parse failed: %s\n", line)
 		}
-		_, target, ok := strings.Cut(filename, "/")
-		if !ok {
-			return nil, Fatalf("failed parsing dist filename: %s\n", filename)
+		target, err := mungeDistPath(target)
+		if err != nil {
+			return nil, err
 		}
 		files = append(files, DistFile{URL: url, Pathname: target})
+
 	}
 	return files, nil
 }
@@ -59,6 +82,9 @@ func DistNames(distDir string) ([]string, error) {
 		if len(fields) > 0 {
 			osList = append(osList, fields[len(fields)-1])
 		}
+	}
+	for i := range osList {
+		osList[i] = strings.ToLower(osList[i])
 	}
 	return osList, nil
 }
