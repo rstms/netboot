@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+cat -<<EOF
+
+// generated distfiles.go
+
+package template
+
+var DistFiles []string = []string{
+EOF
+
+while read line; do
+    echo "    \"$line\","
+done
+
+cat -<<EOF
+}
+
+EOF

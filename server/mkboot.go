@@ -188,10 +188,11 @@ func DefaultDist(distDir, osName string) (string, string, string, error) {
 }
 
 func (m *MkBoot) mkbootOpenBSD() error {
+
 	log.Printf("mkbootOpenBSD: %s %s\n", m.Config.Version, m.Config.Arch)
 
-	// FIXME: check if dist dir comparison is case sensitive
-	_, err := m.checkDistDir("openbsd", m.Config.Version, m.Config.Arch)
+	// generate error if version/arch not present
+	_, err := m.checkDistDir("OpenBSD", m.Config.Version, m.Config.Arch)
 	if err != nil {
 		return Fatal(err)
 	}

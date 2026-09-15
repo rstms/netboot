@@ -13,7 +13,7 @@ $(binary): .fmt
 	fix go build . ./...
 	go build
 
-go_src := $(wildcard *.go) $(wildcard **/*.go)
+go_src := $(wildcard *.go) $(wildcard **/*.go) template/distfiles.go
 
 .fmt: $(go_src) go.sum
 	fix go fmt . ./...
@@ -95,6 +95,7 @@ gen:
 regen:
 	@cd template && $(MAKE) regen
 
+.PHONY: dist
 dist:
 	@cd template && $(MAKE) dist
 
@@ -111,6 +112,10 @@ testfiles: server/testdata/BOOTX64.EFI
 
 server/testdata/BOOTX64.EFI: template/ipxe/rstms-netboot.efi.gz
 	$(if $(openbsd),gzcat,zcat) <$< >$@
+
+template/distfiles.go: template/dist_init_files
+	sort <$< | uniq | scripts/generate_distfiles >$@
+
 
 run:
 	./netboot -d server

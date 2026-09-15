@@ -2,12 +2,16 @@
 # download OS installer resources
 #
 
-default: gen
+default: build
 
 # OS detection flags
 windows = $(if $(SYSTEMROOT),1,)
 openbsd = $(if $(shell uname | grep -i openbsd),1,)
 linux = $(if $(shell uname | grep -i linux),1,)
+
+openbsd-versions != cat openbsd_versions
+debian-versions != cat debian_versions
+alpine-versions != cat alpine_versions 3.22.1 3.23.4
 
 # functions for running only on selected OS
 openbsd_exec = $(if $(openbsd),$(1),@echo "not on openbsd, skipping: $(1)")
@@ -181,7 +185,6 @@ $(ipxe-files):
 	scp phobos:src/rstms-netboot-xyz/dist/ipxe/$(basename $(notdir $@)) ipxe/$(basename $(notdir $@))
 	gzip $(basename $@)
 
-
 dist: $(dist-files) $(ipxe-files)
 
 redist: distclean dist
@@ -203,6 +206,7 @@ distclean: clean
 	rm -f $(ipxe-files)
 	rm -rf $(dist_root)
 	mkdir $(dist_root)
+	rm -f dist_init_files
 
 testo:
 	@for FILE in $(dist-files); do echo $$FILE; done

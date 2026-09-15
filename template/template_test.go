@@ -26,24 +26,23 @@ func distDir(t *testing.T) string {
 func TestTemplateDistNames(t *testing.T) {
 	names, err := DistNames(distDir(t))
 	require.Nil(t, err)
-	require.Len(t, names, 5)
-	require.Contains(t, names, "debian")
-	require.Contains(t, names, "openbsd")
+	require.Len(t, names, 4)
 	require.Contains(t, names, "alpine")
+	require.Contains(t, names, "debian")
+	require.Contains(t, names, "OpenBSD")
 	require.Contains(t, names, "windows")
 	log.Printf("DistNames: %v\n", names)
 }
 
 func TestTemplateDistVersions(t *testing.T) {
-	names, err := DistNames(distDir(t))
-	require.Nil(t, err)
+	names := []string{"alpine", "debian", "OpenBSD", "windows", "openbsd"}
 	for _, name := range names {
 		versions, err := DistVersions(distDir(t), name)
 		require.Nil(t, err)
 		switch name {
 		case "debian":
 			require.Equal(t, []string{"bookworm", "trixie"}, versions)
-		case "openbsd":
+		case "OpenBSD", "openbsd":
 			require.Equal(t, []string{"7.7", "7.8", "7.9"}, versions)
 		case "alpine":
 			require.Equal(t, []string{"3.22.1", "3.23.4"}, versions)

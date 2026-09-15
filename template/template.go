@@ -3,8 +3,8 @@ package template
 import (
 	"embed"
 	"io/fs"
+	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,9 +15,6 @@ var Ipxe embed.FS
 
 //go:embed mkboot
 var Mkboot embed.FS
-
-//go:embed dist_init_files
-var distReadme []byte
 
 type DistFile struct {
 	URL      string
@@ -46,9 +43,8 @@ func mungeDistPath(target string) (string, error) {
 }
 
 func DistInitFiles() ([]DistFile, error) {
-	lines := strings.Split(string(distReadme), "\n")
 	files := []DistFile{}
-	for _, line := range lines {
+	for _, line := range DistFiles {
 		if strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -70,40 +66,70 @@ func DistInitFiles() ([]DistFile, error) {
 	return files, nil
 }
 
-func DistNames(distDir string) ([]string, error) {
-	paths, err := fs.Glob(os.DirFS(distDir), "*")
+func DistDir(distRoot, distName string) (string, error) {
+	name, err := NormalizeDistName(distRoot, distName)
+	if err != nil {
+		return "", Fatal(err)
+	}
+	dir := filepath.Join(distRoot, name)
+	if !IsDir(dir) {
+		return "", Fatalf("uknown OS: %s", distName)
+	}
+	return dir, nil
+}
+
+func DistNames(distRoot string) ([]string, error) {
+	paths, err := fs.Glob(os.DirFS(distRoot), "*")
 	if err != nil {
 		return []string{}, Fatal(err)
 	}
+	log.Printf("paths=%+v\n", paths)
 	slices.Sort(paths)
-	osList := []string{}
+	names := []string{}
 	for _, path := range paths {
 		fields := strings.Split(path, "/")
 		if len(fields) > 0 {
-			osList = append(osList, fields[len(fields)-1])
+			name := fields[len(fields)-1]
+			names = append(names, name)
 		}
 	}
-	for i := range osList {
-		osList[i] = strings.ToLower(osList[i])
-	}
-	return osList, nil
+	return names, nil
 }
 
-func DistVersions(distDir, distName string) ([]string, error) {
-	versionPaths, err := fs.Glob(os.DirFS(distDir), path.Join(distName, "*"))
+func DistVersions(distRoot, distName string) ([]string, error) {
+	//versionPaths, err := fs.Glob(os.DirFS(distDir), path.Join(distName, "*"))
+	distDir, err := DistDir(distRoot, distName)
 	if err != nil {
-		return []string{}, Fatal(err)
+		return nil, Fatal(err)
 	}
-	if len(versionPaths) == 0 {
-		return []string{}, Fatalf("unknown OS: %s", distName)
+	paths, err := fs.Glob(os.DirFS(distDir), "*")
+	if err != nil {
+		return nil, Fatal(err)
 	}
-	slices.Sort(versionPaths)
-	versionList := []string{}
-	for _, path := range versionPaths {
+	log.Printf("paths: %+v\n", paths)
+	if len(paths) == 0 {
+		return nil, Fatalf("no versions found for OS: %s", distName)
+	}
+	slices.Sort(paths)
+	versions := []string{}
+	for _, path := range paths {
 		fields := strings.Split(path, "/")
 		if len(fields) > 0 {
-			versionList = append(versionList, fields[len(fields)-1])
+			versions = append(versions, fields[len(fields)-1])
 		}
 	}
-	return versionList, nil
+	return versions, nil
+}
+
+func NormalizeDistName(distRoot, distName string) (string, error) {
+	names, err := DistNames(distRoot)
+	if err != nil {
+		return "", Fatal(err)
+	}
+	for _, name := range names {
+		if strings.ToLower(distName) == strings.ToLower(name) {
+			return name, nil
+		}
+	}
+	return "", Fatalf("unknown OS: %s", distName)
 }

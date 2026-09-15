@@ -529,7 +529,7 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 
 func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.Request) {
 
-	log.Printf("proxyHandler: mirror=%s request=%+r\n")
+	log.Printf("proxyHandler: mirror=%s request=%+v\n", mirror, r)
 
 	if !c.proxy {
 		Warning("disabled proxy received request: %s", mirror)
@@ -593,7 +593,7 @@ func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.R
 }
 
 func (c *HostCache) CheckUploadCache(mirror string, w http.ResponseWriter, r *http.Request) bool {
-	log.Printf("CheckUploadCache: mirror=%s request=%+r\n")
+	log.Printf("CheckUploadCache: mirror=%s request=%+v\n", mirror, r)
 	filePath := strings.ReplaceAll(r.URL.Path, "/", string(filepath.Separator))
 	pathname := filepath.Join(c.uploadDir, filePath)
 	if IsFile(pathname) {
@@ -837,7 +837,13 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	config.OS = strings.ToLower(config.OS)
+	normalized, err := template.NormalizeDistName(c.distDir, config.OS)
+	if err != nil {
+		message := fmt.Sprintf("unrecognized OS: %s", config.OS)
+		Warning("%s", message)
+		c.fail(w, message, http.StatusBadRequest)
+	}
+	config.OS = normalized
 
 	if config.Address == BOOTSTRAP_MAC_ADDRESS {
 		version, arch, mirror, err := DefaultDist(c.distDir, "alpine")
@@ -866,29 +872,15 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	log.Printf("AddHostHandler: adding MAC=%s IP='' OS=%s Version=%s\n", config.Address, config.OS, config.Version)
 	c.cache[config.Address] = message.HostState{MAC: config.Address, State: "init"}
 
-	distNames, err := template.DistNames(c.distDir)
-	if err != nil {
-		Warning("%v", Fatal(err))
-		c.fail(w, "failed DistNames lookup", http.StatusInternalServerError)
-		return
-	}
-
-	if !slices.Contains(distNames, config.OS) {
-		message := fmt.Sprintf("unrecognized OS: %s", config.OS)
-		Warning("%s", message)
-		c.fail(w, message, http.StatusBadRequest)
-		return
-	}
-
 	distVersions, err := template.DistVersions(c.distDir, config.OS)
 	if err != nil {
 		Warning("%v", Fatal(err))
-		c.fail(w, "failed verifying OS version", http.StatusInternalServerError)
+		c.fail(w, "OS version lookup failed", http.StatusInternalServerError)
 		return
 	}
 
 	if !slices.Contains(distVersions, config.Version) {
-		message := fmt.Sprintf("unrecognized OS Version: %s %s", config.OS, config.Version)
+		message := fmt.Sprintf("unexpected OS version: %s %s", config.OS, config.Version)
 		Warning("%s", message)
 		c.fail(w, message, http.StatusBadRequest)
 		return
@@ -926,7 +918,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 
 	} else {
 		// AlpineLoader is not active, so write MAC.ipxe for selected OS
-		autoexecName := config.OS
+		autoexecName := strings.ToLower(config.OS)
 		if config.Address == BOOTSTRAP_MAC_ADDRESS {
 			autoexecName = "bootstrap"
 		}
@@ -946,7 +938,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// autoexec.ipxe.img is the ipxe for the selected OS regardless of alpine image load selection
-	err = c.expandIpxeFile(filepath.Join(tempDir, "autoexec.ipxe.img"), config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config, config.Version, config.Arch, config.Mirror)
+	err = c.expandIpxeFile(filepath.Join(tempDir, "autoexec.ipxe.img"), strings.ToLower(config.OS)+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config, config.Version, config.Arch, config.Mirror)
 	if err != nil {
 		c.fail(w, "failed copying autoexec.ipxe.img", http.StatusInternalServerError)
 		return
@@ -1277,7 +1269,7 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 		env["_shutdown"] = ""
 	}
 
-	switch config.OS {
+	switch strings.ToLower(config.OS) {
 	case "openbsd":
 		gdlUrl, err := c.gdlUrl(url, config.Version, config.Arch)
 		if err != nil {
