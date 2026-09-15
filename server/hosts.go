@@ -230,6 +230,7 @@ func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, co
 	defer dst.Close()
 
 	// These string replacements are applied to multiple classes of IPXE file
+	// (autoexec.ipxe before it is injected into an .img .iso, or efi disk image)
 	// the prefixes are unique so far, but make sure we don't duplicate any
 	// IPXE files are generated using https://github.com/rstms/rstms-netboot-xyz
 
@@ -527,6 +528,9 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.Request) {
+
+	log.Printf("proxyHandler: mirror=%s request=%+r\n")
+
 	if !c.proxy {
 		Warning("disabled proxy received request: %s", mirror)
 		c.fail(w, "netboot proxy disabled", http.StatusNotImplemented)
@@ -589,6 +593,7 @@ func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.R
 }
 
 func (c *HostCache) CheckUploadCache(mirror string, w http.ResponseWriter, r *http.Request) bool {
+	log.Printf("CheckUploadCache: mirror=%s request=%+r\n")
 	filePath := strings.ReplaceAll(r.URL.Path, "/", string(filepath.Separator))
 	pathname := filepath.Join(c.uploadDir, filePath)
 	if IsFile(pathname) {

@@ -2,9 +2,16 @@
 
 # make openbsd boot cd ISO
 
-set -ue
+set -ueo pipefail
 
-echo "Generating OpenBSD netboot ISO"
+echo 
+echo "================================"
+echo "Generating OpenBSD netboot Image" 
+echo "================================"
+echo
+echo command: $0
+echo args: "$@"
+echo
 
 TEMPLATE_ROOT=$1
 DIST_ROOT=$2
@@ -14,7 +21,7 @@ MKBOOT_USER=$5
 SERIAL=$6
 TARGET=$7
 
-# calculated extra buffer blocks for image root filesystem
+# magic number: extra buffer blocks for image root filesystem
 magic_buffer_blocks=700
 
 # argument examples:
@@ -52,17 +59,21 @@ esac
 [ -n "$MKBOOT_USER" ] || "fail no MKBOOT_USER"
 
 TAG=$(tr <<<$OSREV -d '.')
-SRC_ISO=$DIST_ROOT/openbsd/$OSREV/$MACHINE/cd${TAG}.iso
-DST_ISO=$TEMPLATE_ROOT/ipxe/openbsd-$OSREV-$MACHINE.iso
-SRC_IMG=$DIST_ROOT/openbsd/$OSREV/$MACHINE/miniroot${TAG}.img
-DST_IMG=$TEMPLATE_ROOT/ipxe/openbsd-$OSREV-$MACHINE.img
-DST_RD=$TEMPLATE_ROOT/ipxe/bsd-$OSREV-$MACHINE.rd
-RC_NETBOOT=$TEMPLATE_ROOT/mkboot/rc.netboot.openbsd
 
-# error if source files not present
-stat $SRC_ISO
-stat $SRC_IMG
-stat $RC_NETBOOT
+SRC_ISO=$DIST_ROOT/OpenBSD/$OSREV/$MACHINE/cd${TAG}.iso
+[ -f $SRC_ISO ] || fail "missing SRC_ISO ($SRC_ISO)"
+
+DST_ISO=$TEMPLATE_ROOT/ipxe/openbsd-$OSREV-$MACHINE.iso
+
+SRC_IMG=$DIST_ROOT/OpenBSD/$OSREV/$MACHINE/miniroot${TAG}.img
+[ -f $SRC_IMG ] || fail "missing SRC_IMG ($SRC_IMG)"
+
+DST_IMG=$TEMPLATE_ROOT/ipxe/openbsd-$OSREV-$MACHINE.img
+
+DST_RD=$TEMPLATE_ROOT/ipxe/bsd-$OSREV-$MACHINE.rd
+
+RC_NETBOOT=$TEMPLATE_ROOT/mkboot/rc.netboot.openbsd
+[ -f $RC_NETBOOT ] || fail "missing RC_NETBOOT ($RC_NETBOOT)"
 
 DIR=$(mktemp -td netboot-mkboot-openbsd-XXXXXXXXX)
 RD=$DIR/rd
@@ -70,12 +81,8 @@ CD=$DIR/cd
 ISO=$DIR/iso
 IMG=$DIR/img
 
-
-#echo DST_ISO=$DST_ISO
-#echo SRC_ISO=$SRC_ISO
-#echo OSREV=$OSREV
-#echo MACHINE=$MACHINE
-#echo MKBOOT_USER=$MKBOOT_USER
+echo SRC_ISO=$SRC_ISO
+echo DST_ISO=$DST_ISO
 
 vnd0_clear() {
     vnconfig -l | grep -q 'vnd0: not in use'

@@ -2,26 +2,31 @@ package template
 
 import (
 	"github.com/stretchr/testify/require"
-	"io/fs"
 	"log"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
-func TestTemplateDist(t *testing.T) {
-	err := fs.WalkDir(Dist, "dist", func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		log.Printf("%s, %v\n", path, entry)
-		return nil
-	})
+func TestTemplateDistInitFiles(t *testing.T) {
+	files, err := DistInitFiles()
 	require.Nil(t, err)
+	require.NotZero(t, len(files))
+	for i, file := range files {
+		log.Printf("%d\n%+v\n", i, file)
+	}
 }
 
-func TestTemplateDistnames(t *testing.T) {
-	names, err := DistNames()
+func distDir(t *testing.T) string {
+	cache, err := os.UserCacheDir()
 	require.Nil(t, err)
-	require.Len(t, names, 4)
+	return filepath.Join(cache, "netboot", "dist")
+}
+
+func TestTemplateDistNames(t *testing.T) {
+	names, err := DistNames(distDir(t))
+	require.Nil(t, err)
+	require.Len(t, names, 5)
 	require.Contains(t, names, "debian")
 	require.Contains(t, names, "openbsd")
 	require.Contains(t, names, "alpine")
@@ -30,18 +35,18 @@ func TestTemplateDistnames(t *testing.T) {
 }
 
 func TestTemplateDistVersions(t *testing.T) {
-	names, err := DistNames()
+	names, err := DistNames(distDir(t))
 	require.Nil(t, err)
 	for _, name := range names {
-		versions, err := DistVersions(name)
+		versions, err := DistVersions(distDir(t), name)
 		require.Nil(t, err)
 		switch name {
 		case "debian":
 			require.Equal(t, []string{"bookworm", "trixie"}, versions)
 		case "openbsd":
-			require.Equal(t, []string{"7.5", "7.6", "7.7"}, versions)
+			require.Equal(t, []string{"7.7", "7.8", "7.9"}, versions)
 		case "alpine":
-			require.Equal(t, []string{"3.22.1"}, versions)
+			require.Equal(t, []string{"3.22.1", "3.23.4"}, versions)
 		case "windows":
 			require.Equal(t, []string{"11"}, versions)
 		default:

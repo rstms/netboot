@@ -31,7 +31,7 @@ install: $(binary)
 	go install
 
 test: .fmt testfiles
-	go test -v -failfast . ./...
+	go test -failfast . ./...
 
 debug: .fmt testfiles
 	go test -v -failfast -count=1 -run $(test) . ./...
@@ -78,6 +78,7 @@ clean:
 	mkdir -p $(cache_dir)/ipxe
 	mkdir -p $(config_dir)
 	$(if $(windows),,chown -R $(USER):$(USER) $(config_dir))
+	@cd template && $(MAKE) clean
 
 sterile: clean
 	go clean -cache
@@ -86,14 +87,7 @@ sterile: clean
 	rm -rf $(cache_dir)
 	rm -rf cmd/certs/*
 	touch cmd/certs/.placeholder
-
-distclean: 
-	@cd template && $(MAKE) distclean
-
-distgen:
-	@cd template && $(MAKE) distgen
-
-redist: distclean distgen
+	@cd template && $(MAKE) sterile
 
 gen:
 	@cd template && $(MAKE) gen
@@ -101,12 +95,21 @@ gen:
 regen:
 	@cd template && $(MAKE) regen
 
+dist:
+	@cd template && $(MAKE) dist
+
+redist:
+	@cd template && $(MAKE) redist
+
+distclean:
+	@cd template && $(MAKE) distclean
+
 show-vars:
 	@$(foreach var,$(all_variables),echo $(var)=$($(var));)
 
 testfiles: server/testdata/BOOTX64.EFI
 
-server/testdata/BOOTX64.EFI: template/ipxe/netboot.xyz.efi.gz
+server/testdata/BOOTX64.EFI: template/ipxe/rstms-netboot.efi.gz
 	$(if $(openbsd),gzcat,zcat) <$< >$@
 
 run:

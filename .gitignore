@@ -7,11 +7,13 @@ cruft
 *postactivate
 template/dist
 template/certs
+template/dist_init_files
 bootimg/testdata/*
 bootiso/testdata/*
 server/testdata/*
 *.exe
 dist
 template/ipxe/*.rd
+template/ipxe/*.gz
 template/iso
 .fmt

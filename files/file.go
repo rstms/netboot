@@ -105,7 +105,7 @@ func TreeFiles(basePath, srcPath string) ([]string, error) {
 }
 
 func UnzipFileFromFS(dstPathname, srcPathname string, srcFS fs.FS) error {
-
+	//log.Printf("UnzipFileFromFS: dstPathname=%s srcPathname=%s srcFS=%v\n", dstPathname, srcPathname, srcFS)
 	tempDir, err := os.MkdirTemp("", "unzip-*")
 	if err != nil {
 		return Fatal(err)

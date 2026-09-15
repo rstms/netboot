@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"github.com/rstms/ffs/image"
 	"github.com/rstms/netboot/bootiso"
 	"github.com/rstms/netboot/files"
 	"github.com/rstms/netboot/message"
@@ -19,6 +18,10 @@ import (
 )
 
 var VERSION_PATTERN = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)$`)
+
+const NETBOOT_IPXE_IMG = "rstms-netboot.img.gz"
+const NETBOOT_IPXE_ISO = "rstms-netboot.iso.gz"
+const NETBOOT_IPXE_EFI = "rstms-netboot.efi.gz"
 
 const GENERATE_IMAGE = true
 const NO_GENERATE_IMAGE = false
@@ -187,6 +190,7 @@ func DefaultDist(distDir, osName string) (string, string, string, error) {
 func (m *MkBoot) mkbootOpenBSD() error {
 	log.Printf("mkbootOpenBSD: %s %s\n", m.Config.Version, m.Config.Arch)
 
+	// FIXME: check if dist dir comparison is case sensitive
 	_, err := m.checkDistDir("openbsd", m.Config.Version, m.Config.Arch)
 	if err != nil {
 		return Fatal(err)
@@ -215,7 +219,7 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	*m.BootFiles = append(*m.BootFiles, dstGdl)
 	*/
 
-	srcImage := "netboot.xyz.img.gz"
+	srcImage := NETBOOT_IPXE_IMG
 	injectBootFiles := true
 	err = m.buildIMG("openbsd", srcImage, injectBootFiles)
 	if err != nil {
@@ -240,6 +244,7 @@ func (m *MkBoot) mkbootDebian() error {
 	if err != nil {
 		return Fatal(err)
 	}
+	log.Printf("distDir: %s\n", distDir)
 
 	// copy cacerts.tgz from package tarball: /ipxe/MAC.cacerts
 	// patched into the initrd by rstms-netboot-debian.ipxe (autoexec.ipxe) as /cacerts.tgz
@@ -267,24 +272,27 @@ func (m *MkBoot) mkbootDebian() error {
 	}
 
 	// copy the debian installer kernel: /ipxe/MAC.kernel
-	srcKernel := filepath.Join(distDir, "linux")
+
+	//srcKernel := filepath.Join(distDir, "linux")
 	dstKernel := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
 	log.Printf("mkbootDebian: kernel=%s\n", dstKernel)
-	err = files.CopyFileFromFS(dstKernel, srcKernel, os.DirFS(m.DistDir))
+	//log.Printf("dstKernel=%s\n", dstKernel)
+	//log.Printf("distDir=%s\n", distDir)
+	//log.Printf("m.DistDir=%s\n", m.DistDir)
+	err = files.CopyFileFromFS(dstKernel, "linux", os.DirFS(distDir))
 	if err != nil {
 		return Fatal(err)
 	}
 
 	// copy the debian installer initrd: /ipxe/MAC.initrd
-	srcInitrd := filepath.Join(distDir, "initrd.gz")
 	dstInitrd := filepath.Join(m.IpxeDir, m.Config.Address+".initrd")
 	log.Printf("mkbootDebian: initrd=%s\n", dstInitrd)
-	err = files.CopyFileFromFS(dstInitrd, srcInitrd, os.DirFS(m.DistDir))
+	err = files.CopyFileFromFS(dstInitrd, "initrd.gz", os.DirFS(distDir))
 	if err != nil {
 		return Fatal(err)
 	}
 
-	err = m.buildIMG("debian", "netboot.xyz.img.gz", true)
+	err = m.buildIMG("debian", NETBOOT_IPXE_IMG, true)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -447,7 +455,7 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	label := "alpine"
 	if !imageLoader {
 		label += "-loader"
-		err = m.buildIMG(label, "netboot.xyz.img.gz", true)
+		err = m.buildIMG(label, NETBOOT_IPXE_IMG, true)
 		if err != nil {
 			return Fatal(err)
 		}
@@ -523,7 +531,7 @@ func (m *MkBoot) buildIMG(label, srcImage string, injectFiles bool) error {
 	}
 
 	if injectFiles {
-		err = m.injectBootFiles(dstImage)
+		err = InjectBootFiles(dstImage, *m.BootFiles)
 		if err != nil {
 			return Fatal(err)
 		}
@@ -540,14 +548,14 @@ func (m *MkBoot) buildISO(label string) error {
 
 	// copy netboot source ISO from IPXE template
 	srcIso := filepath.Join(m.TempDir, "netboot.iso")
-	err := files.UnzipFileFromFS(srcIso, filepath.Join("ipxe", "netboot.xyz.iso.gz"), template.Ipxe)
+	err := files.UnzipFileFromFS(srcIso, filepath.Join("ipxe", NETBOOT_IPXE_ISO), template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
 
 	// copy source EFI boot disk image for CreateEFIImage from IPXE template
 	efiBin := filepath.Join(m.TempDir, "BOOTX64.EFI")
-	err = files.UnzipFileFromFS(efiBin, filepath.Join("ipxe", "netboot.xyz.efi.gz"), template.Ipxe)
+	err = files.UnzipFileFromFS(efiBin, filepath.Join("ipxe", NETBOOT_IPXE_EFI), template.Ipxe)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -584,77 +592,6 @@ func FormatMAC(mac, separator string) (string, error) {
 		sep = separator
 	}
 	return formatted, nil
-}
-
-func CreateEFIImage(dstImage, efiBin, autoexec string) error {
-	log.Printf("CreateEFIImage(%s, %s, %s)\n", dstImage, efiBin, autoexec)
-	img, err := image.CreateImage(dstImage, "IPXE", "iPXE", 12, 1440*1024)
-	if err != nil {
-		return Fatal(err)
-	}
-	defer img.Close()
-	err = img.Mkdir("EFI")
-	if err != nil {
-		return Fatal(err)
-	}
-	err = img.Mkdir("EFI/BOOT")
-	if err != nil {
-		return Fatal(err)
-	}
-	_, name := filepath.Split(efiBin)
-	err = img.AddFile(path.Join("EFI", "BOOT", name), efiBin)
-	if err != nil {
-		return Fatal(err)
-	}
-	err = img.AddFile("autoexec.ipxe", autoexec)
-	if err != nil {
-		return Fatal(err)
-	}
-	return nil
-}
-
-func (m *MkBoot) injectBootFiles(fatImage string) error {
-	log.Printf("injectBootFiles: %s\n", fatImage)
-	image, err := image.OpenImage(fatImage)
-	if err != nil {
-		return Fatal(err)
-	}
-	defer image.Close()
-	for i, injectPathname := range *m.BootFiles {
-		_, name := filepath.Split(injectPathname)
-		log.Printf("[%d] name=%s injectPath=%s\n", i, name, injectPathname)
-		switch name {
-		case "autoexec.ipxe.iso":
-			name = ""
-		case "autoexec.ipxe.img":
-			name = "autoexec.ipxe"
-		}
-		if name != "" {
-			log.Printf("injectBootFile %s -> %s\n", injectPathname, name)
-			err = image.AddFile(name, injectPathname)
-			if err != nil {
-				return Fatal(err)
-			}
-		}
-	}
-	return nil
-}
-
-func dumpFAT(dstImage string) error {
-	log.Printf("FAT files: %s\n", dstImage)
-	image, err := image.OpenImage(dstImage)
-	if err != nil {
-		return Fatal(err)
-	}
-	defer image.Close()
-	files, err := image.ScanFiles()
-	if err != nil {
-		return Fatal(err)
-	}
-	for i, file := range files {
-		log.Printf("[%d] %+v\n", i, file)
-	}
-	return nil
 }
 
 func (m *MkBoot) writeDebianNetbootTarball() error {

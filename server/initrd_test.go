@@ -2,7 +2,6 @@ package server
 
 import (
 	"github.com/rstms/netboot/files"
-	"github.com/rstms/netboot/template"
 	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
@@ -11,10 +10,15 @@ import (
 
 func TestNetbootServerInitrdGenerate(t *testing.T) {
 
-	srcInitrd := filepath.Join("dist", "debian", "bookworm", "amd64", "initrd.gz")
+	cache, err := os.UserCacheDir()
+	require.Nil(t, err)
+
+	distFS := os.DirFS(filepath.Join(cache, "netboot", "dist"))
+
+	srcInitrd := filepath.Join("debian", "trixie", "amd64", "initrd.gz")
 	dstInitrd := filepath.Join("testdata", "initrd.gz")
 
-	err := files.CopyFileFromFS(dstInitrd, srcInitrd, template.Dist)
+	err = files.CopyFileFromFS(dstInitrd, srcInitrd, distFS)
 	require.Nil(t, err)
 
 	initrd, err := files.UnzipFile(dstInitrd)

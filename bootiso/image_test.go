@@ -13,6 +13,10 @@ import (
 	"testing"
 )
 
+const NETBOOT_IPXE_IMG = "rstms-netboot.img.gz"
+const NETBOOT_IPXE_ISO = "rstms-netboot.iso.gz"
+const NETBOOT_IPXE_EFI = "rstms-netboot.efi.gz"
+
 var imageFile string
 
 func initTestConfig(t *testing.T) {
@@ -30,13 +34,13 @@ func TestCreateNetbootISO(t *testing.T) {
 		require.Nil(t, err)
 	}
 
-	sourceImage, err := filepath.Abs(filepath.Join("testdata", "netboot.xyz.iso"))
+	sourceImage, err := filepath.Abs(filepath.Join("testdata", NETBOOT_IPXE_ISO))
 	require.Nil(t, err)
 	if IsFile(sourceImage) {
 		err = os.Remove(sourceImage)
 		require.Nil(t, err)
 	}
-	err = files.UnzipFileFromFS(sourceImage, path.Join("ipxe", "netboot.xyz.iso.gz"), template.Ipxe)
+	err = files.UnzipFileFromFS(sourceImage, path.Join("ipxe", NETBOOT_IPXE_ISO), template.Ipxe)
 	require.Nil(t, err)
 
 	efiImage, err := filepath.Abs(filepath.Join("testdata", "BOOTX64.EFI"))
@@ -45,7 +49,7 @@ func TestCreateNetbootISO(t *testing.T) {
 		err = os.Remove(efiImage)
 		require.Nil(t, err)
 	}
-	err = files.UnzipFileFromFS(efiImage, path.Join("ipxe", "netboot.xyz.efi.gz"), template.Ipxe)
+	err = files.UnzipFileFromFS(efiImage, path.Join("ipxe", NETBOOT_IPXE_EFI), template.Ipxe)
 	require.Nil(t, err)
 
 	autoexecFile, err := filepath.Abs(filepath.Join("testdata", "autoexec.ipxe"))
@@ -86,7 +90,7 @@ func TestCreateOpenBSDISO(t *testing.T) {
 		err = os.Remove(efiImage)
 		require.Nil(t, err)
 	}
-	err = files.UnzipFileFromFS(efiImage, path.Join("ipxe", "netboot.xyz.efi.gz"), template.Ipxe)
+	err = files.UnzipFileFromFS(efiImage, path.Join("ipxe", NETBOOT_IPXE_EFI), template.Ipxe)
 	require.Nil(t, err)
 
 	autoexecFile, err := filepath.Abs(filepath.Join("testdata", "autoexec.ipxe"))
