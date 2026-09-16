@@ -6,12 +6,17 @@ cat -<<EOF
 
 package template
 
-var DistFiles []string = []string{
+type DistFile struct {
+	URL      string
+	Pathname string
+}
+
+var DistFiles []DistFile = []DistFile{
 EOF
 
-while read line; do
-    echo "    \"$line\","
-done
+awk '{
+    printf("    {\"%s\", \"%s\"},\n", $1, gensub(/^.*dist\//, "", $2));
+}'
 
 cat -<<EOF
 }

@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -60,7 +59,7 @@ func (m *MkBoot) Generate() (string, error) {
 	}
 	log.Printf("Mkboot.Generate: %s\n", FormatJSON(m))
 
-	switch strings.ToLower(m.Config.OS) {
+	switch m.Config.OS {
 	case "openbsd":
 		err := m.mkbootOpenBSD()
 		if err != nil {
@@ -93,17 +92,6 @@ func (m *MkBoot) Generate() (string, error) {
 	}
 
 	return m.ISO, nil
-}
-
-func (m *MkBoot) checkDistDir(osName, version, arch string) (string, error) {
-	log.Printf("checkDistDir: os=%s version=%s arch=%s\n", osName, version, arch)
-	// generate error if version/arch not present
-	distDir := filepath.Join(m.DistDir, osName, version, arch)
-	log.Printf("checking distDir: %s\n", distDir)
-	if !files.IsDir(distDir) {
-		return "", Fatalf("unsupported: %s %s %s", osName, version, arch)
-	}
-	return distDir, nil
 }
 
 // semver srot a slice of strings using a regex pattern to parse major, minor, patch groups
@@ -144,16 +132,9 @@ func SemverSort(unsorted []string, pattern *regexp.Regexp) ([]string, error) {
 }
 
 func DefaultDist(distDir, osName string) (string, string, string, error) {
-	versionEntries, err := fs.ReadDir(os.DirFS(distDir), osName)
+	versions, err := template.DistVersions(distDir, osName)
 	if err != nil {
 		return "", "", "", Fatal(err)
-	}
-	versions := []string{}
-	for _, entry := range versionEntries {
-		versions = append(versions, entry.Name())
-	}
-	if len(versions) < 1 {
-		return "", "", "", Fatalf("no dist dirs found for os: %s", osName)
 	}
 	sortedVersions, err := SemverSort(versions, VERSION_PATTERN)
 	if err != nil {
@@ -161,14 +142,11 @@ func DefaultDist(distDir, osName string) (string, string, string, error) {
 	}
 	version := sortedVersions[0]
 
-	archEntries, err := fs.ReadDir(os.DirFS(distDir), path.Join(osName, version))
+	archs, err := template.DistArchs(distDir, osName, version)
 	if err != nil {
 		return "", "", "", Fatal(err)
 	}
-	if len(archEntries) < 1 {
-		return "", "", "", Fatalf("no arch dirs found for os:%s version:%s\n", osName, version)
-	}
-	arch := archEntries[0].Name()
+	arch := archs[0]
 
 	var mirror string
 	switch osName {
@@ -192,7 +170,7 @@ func (m *MkBoot) mkbootOpenBSD() error {
 	log.Printf("mkbootOpenBSD: %s %s\n", m.Config.Version, m.Config.Arch)
 
 	// generate error if version/arch not present
-	_, err := m.checkDistDir("OpenBSD", m.Config.Version, m.Config.Arch)
+	_, err := template.DistPath(m.DistDir, m.Config.OS, m.Config.Version, m.Config.Arch)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -241,7 +219,7 @@ func (m *MkBoot) mkbootDebian() error {
 	log.Printf("mkbootDebian: %s %s\n", m.Config.Version, m.Config.Arch)
 
 	// generate error if version/arch not present
-	distDir, err := m.checkDistDir("debian", m.Config.Version, m.Config.Arch)
+	distDir, err := template.DistPath(m.DistDir, "debian", m.Config.Version, m.Config.Arch)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -274,7 +252,6 @@ func (m *MkBoot) mkbootDebian() error {
 
 	// copy the debian installer kernel: /ipxe/MAC.kernel
 
-	//srcKernel := filepath.Join(distDir, "linux")
 	dstKernel := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
 	log.Printf("mkbootDebian: kernel=%s\n", dstKernel)
 	//log.Printf("dstKernel=%s\n", dstKernel)
@@ -321,7 +298,7 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 		}
 	}
 
-	distDir, err := m.checkDistDir("alpine", version, arch)
+	distDir, err := template.DistPath(m.DistDir, "alpine", version, arch)
 	if err != nil {
 		return Fatal(err)
 	}
@@ -334,28 +311,25 @@ func (m *MkBoot) mkbootAlpine(imageLoader bool) error {
 	minor := match[2]
 
 	// copy the alpine netboot kernel: /ipxe/MAC.kernel
-	srcKernel := filepath.Join(distDir, "kernel")
 	dstKernel := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
 	log.Printf("mkbootAlpine: kernel=%s\n", dstKernel)
-	err = files.CopyFileFromFS(dstKernel, srcKernel, os.DirFS(m.DistDir))
+	err = files.CopyFileFromFS(dstKernel, "kernel", os.DirFS(distDir))
 	if err != nil {
 		return Fatal(err)
 	}
 
 	// copy the alpine netboot initrd: /ipxe/MAC.initrd
-	srcInitrd := filepath.Join(distDir, "initrd")
 	dstInitrd := filepath.Join(m.IpxeDir, m.Config.Address+".initrd")
 	log.Printf("mkbootAlpine: initrd=%s\n", dstInitrd)
-	err = files.CopyFileFromFS(dstInitrd, srcInitrd, os.DirFS(m.DistDir))
+	err = files.CopyFileFromFS(dstInitrd, "initrd", os.DirFS(distDir))
 	if err != nil {
 		return Fatal(err)
 	}
 
 	// copy the alpine netboot modloop: /ipxe/MAC.modloop
-	srcModloop := filepath.Join(distDir, "modloop")
 	dstModloop := filepath.Join(m.IpxeDir, m.Config.Address+".modloop")
 	log.Printf("mkbootAlpine: modloop=%s\n", dstModloop)
-	err = files.CopyFileFromFS(dstModloop, srcModloop, os.DirFS(m.DistDir))
+	err = files.CopyFileFromFS(dstModloop, "modloop", os.DirFS(distDir))
 	if err != nil {
 		return Fatal(err)
 	}
@@ -474,7 +448,7 @@ func (m *MkBoot) mkbootWindows() error {
 	log.Printf("mkbootWindows: %s %s\n", m.Config.Version, m.Config.Arch)
 
 	// generate error if version/arch not present
-	_, err := m.checkDistDir("windows", m.Config.Version, m.Config.Arch)
+	_, err := template.DistPath(m.DistDir, "windows", m.Config.Version, m.Config.Arch)
 	if err != nil {
 		return Fatal(err)
 	}

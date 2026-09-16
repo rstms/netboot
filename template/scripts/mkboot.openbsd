@@ -60,12 +60,12 @@ esac
 
 TAG=$(tr <<<$OSREV -d '.')
 
-SRC_ISO=$DIST_ROOT/OpenBSD/$OSREV/$MACHINE/cd${TAG}.iso
+SRC_ISO=$DIST_ROOT/pub/OpenBSD/$OSREV/$MACHINE/cd${TAG}.iso
 [ -f $SRC_ISO ] || fail "missing SRC_ISO ($SRC_ISO)"
 
 DST_ISO=$TEMPLATE_ROOT/ipxe/openbsd-$OSREV-$MACHINE.iso
 
-SRC_IMG=$DIST_ROOT/OpenBSD/$OSREV/$MACHINE/miniroot${TAG}.img
+SRC_IMG=$DIST_ROOT/pub/OpenBSD/$OSREV/$MACHINE/miniroot${TAG}.img
 [ -f $SRC_IMG ] || fail "missing SRC_IMG ($SRC_IMG)"
 
 DST_IMG=$TEMPLATE_ROOT/ipxe/openbsd-$OSREV-$MACHINE.img

@@ -17,3 +17,4 @@ template/ipxe/*.rd
 template/ipxe/*.gz
 template/iso
 .fmt
+template/distfiles.go

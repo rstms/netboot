@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+dist_base=${1:-~/.cache/netboot/dist}
+mirror=${2:-cdn.openbsd.org/pub/OpenBSD}
+version=${3:-7.9}
+arch=${4:-amd64}
+
+fail() {
+    echo >&2 $0: $@
+    exit 1
+}
+
+[ -d $dist_base ] || fail "dist directory not found"
+[ -d $dist_base/pub/OpenBSD/${version} ] && fail "directory exists"
+(cd $dist_base && wget -r --no-clobber --no-parent --no-host-directories https://${mirror}/${version}/${arch}/)
+for file in $(cd $dist_base && find pub/OpenBSD/${version}/${arch} -type f); do
+  echo >>dist_init_files https://${mirror}/${version}/${arch}/$(basename $file) ${dist_base}/pub/OpenBSD/${version}/${arch}/$(basename $file)
+done

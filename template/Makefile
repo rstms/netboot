@@ -9,9 +9,9 @@ windows = $(if $(SYSTEMROOT),1,)
 openbsd = $(if $(shell uname | grep -i openbsd),1,)
 linux = $(if $(shell uname | grep -i linux),1,)
 
-openbsd-versions != cat openbsd_versions
-debian-versions != cat debian_versions
-alpine-versions != cat alpine_versions 3.22.1 3.23.4
+openbsd_versions = 7.7 7.8 7.9
+debian_versions = bookworm trixie
+alpine_versions = 3.22.1 3.23.4
 
 # functions for running only on selected OS
 openbsd_exec = $(if $(openbsd),$(1),@echo "not on openbsd, skipping: $(1)")
@@ -36,20 +36,20 @@ debian-12-initrd = $(dist_root)/debian/bookworm/amd64/initrd.gz
 debian-13-kernel = $(dist_root)/debian/trixie/amd64/linux
 debian-13-initrd = $(dist_root)/debian/trixie/amd64/initrd.gz
 
-openbsd-77-iso = $(dist_root)/OpenBSD/7.7/amd64/cd77.iso
-openbsd-77-img = $(dist_root)/OpenBSD/7.7/amd64/miniroot77.img
+openbsd-77-iso = $(dist_root)/pub/OpenBSD/7.7/amd64/cd77.iso
+openbsd-77-img = $(dist_root)/pub/OpenBSD/7.7/amd64/miniroot77.img
 
 openbsd-77-netboot-iso = ipxe/openbsd-7.7-amd64.iso.gz
 openbsd-77-netboot-img = ipxe/openbsd-7.7-amd64.img.gz
 
-openbsd-78-iso = $(dist_root)/OpenBSD/7.8/amd64/cd78.iso
-openbsd-78-img = $(dist_root)/OpenBSD/7.8/amd64/miniroot78.img
+openbsd-78-iso = $(dist_root)/pub/OpenBSD/7.8/amd64/cd78.iso
+openbsd-78-img = $(dist_root)/pub/OpenBSD/7.8/amd64/miniroot78.img
 
 openbsd-78-netboot-iso = ipxe/openbsd-7.8-amd64.iso.gz
 openbsd-78-netboot-img = ipxe/openbsd-7.8-amd64.img.gz
 
-openbsd-79-iso = $(dist_root)/OpenBSD/7.9/amd64/cd79.iso
-openbsd-79-img = $(dist_root)/OpenBSD/7.9/amd64/miniroot79.img
+openbsd-79-iso = $(dist_root)/pub/OpenBSD/7.9/amd64/cd79.iso
+openbsd-79-img = $(dist_root)/pub/OpenBSD/7.9/amd64/miniroot79.img
 
 openbsd-79-netboot-iso = ipxe/openbsd-7.9-amd64.iso.gz
 openbsd-79-netboot-img = ipxe/openbsd-7.9-amd64.img.gz
@@ -101,6 +101,14 @@ dist-files = $(openbsd-dist-files) $(debian-dist-files) $(alpine-dist-files) $(w
 generated-files = $(openbsd-netboot-iso-files) $(openbsd-netboot-img-files) 
 
 
+#	$(foreach version,$(openbsd_versions),scripts/populate_openbsd_dist $(dist_root) $(openbsd_mirror) $(version) amd64;)
+openbsd-dist-dirs = $(foreach version,$(openbsd_versions),$(dist_root)/pub/OpenBSD/$(version))
+
+$(openbsd-dist-dirs):
+	scripts/populate_openbsd_dist $(dist_root) $(openbsd_mirror) $(notdir $@) amd64
+
+$(openbsd-dist-files): $(openbsd-dist-dirs)
+
 $(win11-iso):
 	@scripts/update_winiso $(dist_upload_host) $(notdir $@) iso download
 
@@ -115,28 +123,6 @@ $(debian-13-kernel):
 
 $(debian-13-initrd):
 	$(call curl_download,http://$(debian_mirror)/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz,$@)
-
-$(openbsd-dist-files):
-	$(call curl_download,https://$(openbsd_mirror)/$(word 7,$(subst /, ,$@))/$(word 8,$(subst /, ,$@))/$(notdir $@),$@)
-
-#$(openbsd-77-iso):
-#	$(call curl_download,$(call openbsd_url,$@),$@)
-#
-#$(openbsd-77-img):
-#	$(call curl_download,$(call openbsd_url,$@),$@)
-#
-#$(openbsd-78-iso):
-#	$(call curl_download,$(call openbsd_url,$@),$@)
-#
-#$(openbsd-78-img):
-#	$(call curl_download,$(call openbsd_url,$@),$@)
-#
-#$(openbsd-79-iso):
-#	$(call curl_download,$(call openbsd_url,$@),$@)
-#
-#$(openbsd-79-img):
-#	$(call curl_download,$(call openbsd_url,$@),$@)
-
 
 $(alpine-3221-kernel):
 	$(call curl_download,https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/vmlinuz-virt,$@)
@@ -184,6 +170,7 @@ $(windows-11-iso):
 $(ipxe-files):
 	scp phobos:src/rstms-netboot-xyz/dist/ipxe/$(basename $(notdir $@)) ipxe/$(basename $(notdir $@))
 	gzip $(basename $@)
+
 
 dist: $(dist-files) $(ipxe-files)
 

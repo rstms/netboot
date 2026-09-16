@@ -27,7 +27,7 @@ import (
 // mirrors used by netboot proxy feature
 const DEFAULT_DEBIAN_MIRROR = "http://ftp.us.debian.org"
 const DEFAULT_DEBIAN_SECURITY_MIRROR = "http://security.debian.org"
-const DEFAULT_OPENBSD_MIRROR = "https://ftp.openbsd.org"
+const DEFAULT_OPENBSD_MIRROR = "https://cdn.openbsd.org"
 const DEFAULT_ALPINE_MIRROR = "https://dl-cdn.alpinelinux.org"
 const DEFAULT_ISO_KEY_LIFETIME = 600
 const WHITELIST_TIMEOUT_INTERVAL = 30
@@ -193,16 +193,12 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 	log.Printf("upload dir: %s\n", c.uploadDir)
 	log.Printf("whitelist lifetime: %d\n", c.whitelistLifetime)
 
-	// download dist files from embedded list
-	distFiles, err := template.DistInitFiles()
-	if err != nil {
-		return nil, err
-	}
 	distRoot, err := os.OpenRoot(c.distDir)
 	if err != nil {
 		return nil, Fatal(err)
 	}
-	for _, df := range distFiles {
+	// download dist files from embedded list
+	for _, df := range template.DistFiles {
 		err := DownloadDistFile(distRoot, df.URL, df.Pathname)
 		if err != nil {
 			return nil, err
@@ -215,7 +211,7 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 // expand macros in file from Ipxe template writing to dstPath
 func (c *HostCache) expandIpxeFile(dstPathname, srcName, url, httpUrl string, config *message.NetbootConfig, version, arch, mirror string) error {
 
-	log.Printf("expandIpxeFile(%s, %s, %s, <config>)\n", dstPathname, srcName, url)
+	//log.Printf("expandIpxeFile(%s, %s, %s, <config>)\n", dstPathname, srcName, url)
 
 	src, err := template.Ipxe.Open(path.Join("ipxe", srcName))
 	if err != nil {
@@ -529,7 +525,7 @@ func (c *HostCache) IPXEHandlerTLS(w http.ResponseWriter, r *http.Request) {
 
 func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.Request) {
 
-	log.Printf("proxyHandler: mirror=%s request=%+v\n", mirror, r)
+	//log.Printf("proxyHandler: mirror=%s request=%+v\n", mirror, r)
 
 	if !c.proxy {
 		Warning("disabled proxy received request: %s", mirror)
@@ -593,7 +589,7 @@ func (c *HostCache) proxyHandler(mirror string, w http.ResponseWriter, r *http.R
 }
 
 func (c *HostCache) CheckUploadCache(mirror string, w http.ResponseWriter, r *http.Request) bool {
-	log.Printf("CheckUploadCache: mirror=%s request=%+v\n", mirror, r)
+	//log.Printf("CheckUploadCache: mirror=%s request=%+v\n", mirror, r)
 	filePath := strings.ReplaceAll(r.URL.Path, "/", string(filepath.Separator))
 	pathname := filepath.Join(c.uploadDir, filePath)
 	if IsFile(pathname) {
@@ -837,13 +833,16 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	normalized, err := template.NormalizeDistName(c.distDir, config.OS)
+	config.OS = strings.ToLower(config.OS)
+	config.Version = strings.ToLower(config.Version)
+	config.Arch = strings.ToLower(config.Arch)
+
+	_, err = template.DistPath(c.distDir, config.OS, config.Version, config.Arch)
 	if err != nil {
-		message := fmt.Sprintf("unrecognized OS: %s", config.OS)
+		message := fmt.Sprintf("%s %s %s not found", config.OS, config.Version, config.Arch)
 		Warning("%s", message)
 		c.fail(w, message, http.StatusBadRequest)
 	}
-	config.OS = normalized
 
 	if config.Address == BOOTSTRAP_MAC_ADDRESS {
 		version, arch, mirror, err := DefaultDist(c.distDir, "alpine")
@@ -918,7 +917,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 
 	} else {
 		// AlpineLoader is not active, so write MAC.ipxe for selected OS
-		autoexecName := strings.ToLower(config.OS)
+		autoexecName := config.OS
 		if config.Address == BOOTSTRAP_MAC_ADDRESS {
 			autoexecName = "bootstrap"
 		}
@@ -938,7 +937,7 @@ func (c *HostCache) AddHostHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// autoexec.ipxe.img is the ipxe for the selected OS regardless of alpine image load selection
-	err = c.expandIpxeFile(filepath.Join(tempDir, "autoexec.ipxe.img"), strings.ToLower(config.OS)+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config, config.Version, config.Arch, config.Mirror)
+	err = c.expandIpxeFile(filepath.Join(tempDir, "autoexec.ipxe.img"), config.OS+"-autoexec.ipxe", netbootURL, netbootHttpURL, &config, config.Version, config.Arch, config.Mirror)
 	if err != nil {
 		c.fail(w, "failed copying autoexec.ipxe.img", http.StatusInternalServerError)
 		return
@@ -1269,7 +1268,7 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 		env["_shutdown"] = ""
 	}
 
-	switch strings.ToLower(config.OS) {
+	switch config.OS {
 	case "openbsd":
 		gdlUrl, err := c.gdlUrl(url, config.Version, config.Arch)
 		if err != nil {
@@ -1380,7 +1379,7 @@ func (c *HostCache) bumpWhitelistExpiration(r *http.Request) {
 
 func (c *HostCache) updateWhitelistExpiration(ip string) {
 	c.whitelistExpirations[ip] = time.Now().Add(time.Duration(uint64(c.whitelistLifetime)) * time.Second)
-	log.Printf("updateWhitelistExpiration(%s) %+v\n", ip, c.whitelistExpirations)
+	//log.Printf("updateWhitelistExpiration(%s) %+v\n", ip, c.whitelistExpirations)
 	if c.whitelistTicker == nil {
 		go func() {
 			c.whitelistTicker = time.NewTicker(WHITELIST_TIMEOUT_INTERVAL * time.Second)
