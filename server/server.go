@@ -159,6 +159,8 @@ func (s *NetbootServer) Start() error {
 		httpMux.HandleFunc("GET /alpine/", s.hosts.AlpineHandler)
 		httpMux.HandleFunc("GET /debian/", s.hosts.DebianHandler)
 		httpMux.HandleFunc("GET /debian-security/", s.hosts.DebianSecurityHandler)
+		httpMux.HandleFunc("GET /devuan/", s.hosts.DevuanHandler)
+		httpMux.HandleFunc("GET /devuan-security/", s.hosts.DevuanSecurityHandler)
 		httpMux.HandleFunc("GET /pub/OpenBSD/", s.hosts.OpenBSDHandler)
 	}
 
@@ -191,6 +193,8 @@ func (s *NetbootServer) Start() error {
 		httpsMux.HandleFunc("GET /alpine/", s.hosts.AlpineHandlerTLS)
 		httpsMux.HandleFunc("GET /debian/", s.hosts.DebianHandlerTLS)
 		httpsMux.HandleFunc("GET /debian-security/", s.hosts.DebianSecurityHandlerTLS)
+		httpsMux.HandleFunc("GET /devuan/", s.hosts.DevuanHandlerTLS)
+		httpsMux.HandleFunc("GET /devuan-security/", s.hosts.DevuanSecurityHandlerTLS)
 		httpsMux.HandleFunc("GET /pub/OpenBSD/", s.hosts.OpenBSDHandlerTLS)
 	}
 

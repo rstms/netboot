@@ -70,6 +70,11 @@ func (m *MkBoot) Generate() (string, error) {
 		if err != nil {
 			return "", Fatal(err)
 		}
+	case "devuan":
+		err := m.mkbootDevuan()
+		if err != nil {
+			return "", Fatal(err)
+		}
 	case "alpine":
 		err := m.mkbootAlpine(false)
 		if err != nil {
@@ -154,6 +159,8 @@ func DefaultDist(distDir, osName string) (string, string, string, error) {
 		mirror = DEFAULT_ALPINE_MIRROR
 	case "debian":
 		mirror = DEFAULT_DEBIAN_MIRROR
+	case "devuan":
+		mirror = DEFAULT_DEVUAN_MIRROR
 	case "openbsd":
 		mirror = DEFAULT_OPENBSD_MIRROR
 	default:
@@ -237,7 +244,7 @@ func (m *MkBoot) mkbootDebian() error {
 	// generate netboot tarball: /ipxe/MAC.netboot
 	// contains all BootFiles, extracts to /netboot
 	// patched into the initrd by rstms-netboot-debian.ipxe (autoexec.ipxe) as /netboot.tgz
-	err = m.writeDebianNetbootTarball()
+	err = m.writeDebianNetbootTarball("Debian")
 	if err != nil {
 		return Fatal(err)
 	}
@@ -276,6 +283,74 @@ func (m *MkBoot) mkbootDebian() error {
 	}
 
 	err = m.buildISO("debian")
+	if err != nil {
+		return Fatal(err)
+	}
+
+	return nil
+}
+
+func (m *MkBoot) mkbootDevuan() error {
+	log.Printf("mkbootDevuan: %s %s\n", m.Config.Version, m.Config.Arch)
+
+	// generate error if version/arch not present
+	distDir, err := template.DistPath(m.DistDir, "devuan", m.Config.Version, m.Config.Arch)
+	if err != nil {
+		return Fatal(err)
+	}
+	log.Printf("distDir: %s\n", distDir)
+
+	// copy cacerts.tgz from package tarball: /ipxe/MAC.cacerts
+	// patched into the initrd by rstms-netboot-devuan.ipxe (autoexec.ipxe) as /cacerts.tgz
+	tarballPathname := filepath.Join(m.IpxeDir, fmt.Sprintf("%s.tgz", m.Config.Address))
+	cacerts := filepath.Join(m.IpxeDir, m.Config.Address+".cacerts")
+	err = files.ExtractTarballFile(cacerts, "root/cacerts.tgz", tarballPathname)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	// generate netboot tarball: /ipxe/MAC.netboot
+	// contains all BootFiles, extracts to /netboot
+	// patched into the initrd by rstms-netboot-devuan.ipxe (autoexec.ipxe) as /netboot.tgz
+	err = m.writeDebianNetbootTarball("Devuan")
+	if err != nil {
+		return Fatal(err)
+	}
+
+	// for devuan, overwrite /ipxe/MAC.postinstall with template/mkboot/rc.netboot.devuan
+	postinstall := filepath.Join(m.IpxeDir, m.Config.Address+".postinstall")
+	log.Printf("mkbootDevuan: postinstall=%s\n", postinstall)
+	err = files.CopyFileFromFS(postinstall, "mkboot/rc.netboot.devuan", template.Mkboot)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	// copy the devuan installer kernel: /ipxe/MAC.kernel
+
+	dstKernel := filepath.Join(m.IpxeDir, m.Config.Address+".kernel")
+	log.Printf("mkbootDevuan: kernel=%s\n", dstKernel)
+	//log.Printf("dstKernel=%s\n", dstKernel)
+	//log.Printf("distDir=%s\n", distDir)
+	//log.Printf("m.DistDir=%s\n", m.DistDir)
+	err = files.CopyFileFromFS(dstKernel, "linux", os.DirFS(distDir))
+	if err != nil {
+		return Fatal(err)
+	}
+
+	// copy the devuan installer initrd: /ipxe/MAC.initrd
+	dstInitrd := filepath.Join(m.IpxeDir, m.Config.Address+".initrd")
+	log.Printf("mkbootDevuan: initrd=%s\n", dstInitrd)
+	err = files.CopyFileFromFS(dstInitrd, "initrd.gz", os.DirFS(distDir))
+	if err != nil {
+		return Fatal(err)
+	}
+
+	err = m.buildIMG("devuan", NETBOOT_IPXE_IMG, true)
+	if err != nil {
+		return Fatal(err)
+	}
+
+	err = m.buildISO("devuan")
 	if err != nil {
 		return Fatal(err)
 	}
@@ -569,7 +644,7 @@ func FormatMAC(mac, separator string) (string, error) {
 	return formatted, nil
 }
 
-func (m *MkBoot) writeDebianNetbootTarball() error {
+func (m *MkBoot) writeDebianNetbootTarball(label string) error {
 	modes := make(map[string]fs.FileMode)
 	netbootDir := filepath.Join(m.TempDir, "netboot")
 	err := os.MkdirAll(filepath.Join(netbootDir, "netboot"), 0700)
@@ -586,7 +661,7 @@ func (m *MkBoot) writeDebianNetbootTarball() error {
 		modes[dstPathname] = 0600
 	}
 	netBall := filepath.Join(m.IpxeDir, m.Config.Address+".netboot")
-	log.Printf("mkbootDebian: netbootTarball=%s\n", netBall)
+	log.Printf("mkboot%s: netbootTarball=%s\n", label, netBall)
 	err = files.WriteTarball(netBall, filepath.Join(m.TempDir, "netboot"), true, []string{}, modes)
 	if err != nil {
 		return Fatal(err)

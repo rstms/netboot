@@ -11,6 +11,7 @@ linux = $(if $(shell uname | grep -i linux),1,)
 
 openbsd_versions = 7.7 7.8 7.9
 debian_versions = bookworm trixie
+devuan_versions = excalibur daedalus
 alpine_versions = 3.23.6 3.24.2
 
 # functions for running only on selected OS
@@ -19,6 +20,7 @@ linux_exec = $(if $(linux),$(1),@echo "not on linux, skipping: $(1)")
 windows_exec = $(if $(windows),$(1),@echo "not on windows, skipping: $(1)")
 
 debian_mirror = ftp.us.debian.org
+devuan_mirror = deb.devuan.org
 openbsd_mirror = cdn.openbsd.org/pub/OpenBSD
 alpine_mirror = dl-cdn.alpinelinux.org
 
@@ -35,6 +37,12 @@ debian-12-initrd = $(dist_root)/debian/bookworm/amd64/initrd.gz
 
 debian-13-kernel = $(dist_root)/debian/trixie/amd64/linux
 debian-13-initrd = $(dist_root)/debian/trixie/amd64/initrd.gz
+
+devuan-5-kernel = $(dist_root)/devuan/daedalus/amd64/linux
+devuan-5-initrd = $(dist_root)/devuan/daedalus/amd64/initrd.gz
+
+devuan-6-kernel = $(dist_root)/devuan/excalibur/amd64/linux
+devuan-6-initrd = $(dist_root)/devuan/excalibur/amd64/initrd.gz
 
 openbsd-77-iso = $(dist_root)/pub/OpenBSD/7.7/amd64/cd77.iso
 openbsd-77-img = $(dist_root)/pub/OpenBSD/7.7/amd64/miniroot77.img
@@ -88,6 +96,10 @@ debian-dist-files = \
 	$(debian-12-kernel) $(debian-12-initrd) \
 	$(debian-13-kernel) $(debian-13-initrd) 
 
+devuan-dist-files = \
+	$(devuan-5-kernel) $(devuan-5-initrd) \
+	$(devuan-6-kernel) $(devuan-6-initrd) 
+
 alpine-dist-files = \
 	$(alpine-3236-kernel) $(alpine-3236-initrd) $(alpine-3236-modloop) \
 	$(alpine-3242-kernel) $(alpine-3242-initrd) $(alpine-3242-modloop) 
@@ -95,7 +107,7 @@ alpine-dist-files = \
 windows-dist-files = \
 	$(windows-11-iso)
 
-dist-files = $(openbsd-dist-files) $(debian-dist-files) $(alpine-dist-files) $(windows-dist-files)
+dist-files = $(openbsd-dist-files) $(debian-dist-files) $(devuan-dist-files) $(alpine-dist-files) $(windows-dist-files)
 
 generated-files = $(openbsd-netboot-iso-files) $(openbsd-netboot-img-files) 
 
@@ -122,6 +134,18 @@ $(debian-13-kernel):
 
 $(debian-13-initrd):
 	$(call curl_download,http://$(debian_mirror)/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz,$@)
+
+$(devuan-5-kernel):
+	$(call curl_download,http://$(devuan_mirror)/devuan/dists/daedalus/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux,$@)
+
+$(devuan-5-initrd):
+	$(call curl_download,http://$(devuan_mirror)/devuan/dists/daedalus/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz,$@)
+
+$(devuan-6-kernel):
+	$(call curl_download,http://$(devuan_mirror)/devuan/dists/excalibur/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux,$@)
+
+$(devuan-6-initrd):
+	$(call curl_download,http://$(devuan_mirror)/devuan/dists/excalibur/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz,$@)
 
 $(alpine-3236-kernel):
 	$(call curl_download,https://$(alpine_mirror)/v3.23/releases/x86_64/netboot-3.23.6/vmlinuz-virt,$@)

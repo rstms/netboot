@@ -27,6 +27,8 @@ import (
 // mirrors used by netboot proxy feature
 const DEFAULT_DEBIAN_MIRROR = "http://ftp.us.debian.org"
 const DEFAULT_DEBIAN_SECURITY_MIRROR = "http://security.debian.org"
+const DEFAULT_DEVUAN_MIRROR = "http://deb.devuan.org"
+const DEFAULT_DEVUAN_SECURITY_MIRROR = "http://deb.devuan.org"
 const DEFAULT_OPENBSD_MIRROR = "https://cdn.openbsd.org"
 const DEFAULT_ALPINE_MIRROR = "https://dl-cdn.alpinelinux.org"
 const DEFAULT_ISO_KEY_LIFETIME = 600
@@ -52,6 +54,7 @@ var MAC_ISO_PATTERN = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]{0,1}){5}([0-9A-Fa
 var DIST_UPLOAD_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
 	regexp.MustCompile(`^pub/alpine/\d\.\d\.\d/x86_64/[[:word:].-]+`),
 	regexp.MustCompile(`^pub/debian/[a-z]+/amd64/[[:word:].-]+`),
+	regexp.MustCompile(`^pub/devuan/[a-z]+/amd64/[[:word:].-]+`),
 	regexp.MustCompile(`^pub/OpenBSD/\d\.\d/packages/amd64/[[:word:].-]+`),
 	regexp.MustCompile(`^pub/windows/\d+/x64/[[:word:].-]+`),
 	regexp.MustCompile(`^pub/OpenBSD/\d\.\d/bin/amd64/[[:word:].-]+`),
@@ -60,6 +63,7 @@ var DIST_UPLOAD_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
 var DIST_DELETE_PATTERNS []*regexp.Regexp = []*regexp.Regexp{
 	regexp.MustCompile(`^pub/alpine(/.*)*`),
 	regexp.MustCompile(`^pub/debian(/.*)*`),
+	regexp.MustCompile(`^pub/devuan(/.*)*`),
 	regexp.MustCompile(`^pub/OpenBSD(/.*)*`),
 	regexp.MustCompile(`^pub/windows(/.*)*`),
 }
@@ -126,6 +130,8 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 	ViperSetDefault(prefix+"mirror.alpine", DEFAULT_ALPINE_MIRROR)
 	ViperSetDefault(prefix+"mirror.debian", DEFAULT_DEBIAN_MIRROR)
 	ViperSetDefault(prefix+"mirror.debian-security", DEFAULT_DEBIAN_SECURITY_MIRROR)
+	ViperSetDefault(prefix+"mirror.devuan", DEFAULT_DEVUAN_MIRROR)
+	ViperSetDefault(prefix+"mirror.devuan-security", DEFAULT_DEVUAN_SECURITY_MIRROR)
 	ViperSetDefault(prefix+"mirror.openbsd", DEFAULT_OPENBSD_MIRROR)
 	ViperSetDefault(prefix+"iso_key_lifetime", DEFAULT_ISO_KEY_LIFETIME)
 	ViperSetDefault(prefix+"whitelist_lifetime", DEFAULT_WHITELIST_LIFETIME)
@@ -148,6 +154,8 @@ func NewHostCache(dir string, httpPort, httpsPort int, proxyEnabled bool) (*Host
 			"alpine":          ViperGetString(prefix + "mirror.alpine"),
 			"debian":          ViperGetString(prefix + "mirror.debian"),
 			"debian-security": ViperGetString(prefix + "mirror.debian-security"),
+			"devuan":          ViperGetString(prefix + "mirror.devuan"),
+			"devuan-security": ViperGetString(prefix + "mirror.devuan-security"),
 			"openbsd":         ViperGetString(prefix + "mirror.openbsd"),
 		},
 		httpURL:              ViperGetString(prefix + "http_url"),
@@ -622,6 +630,30 @@ func (c *HostCache) DebianSecurityHandler(w http.ResponseWriter, r *http.Request
 func (c *HostCache) DebianSecurityHandlerTLS(w http.ResponseWriter, r *http.Request) {
 	c.optionalClientCert(w, r)
 	c.proxyHandler("debian-security", w, r)
+}
+
+func (c *HostCache) DevuanHandler(w http.ResponseWriter, r *http.Request) {
+	if !c.validateHttpRequest(w, r) {
+		return
+	}
+	c.proxyHandler("devuan", w, r)
+}
+
+func (c *HostCache) DevuanHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
+	c.proxyHandler("devuan", w, r)
+}
+
+func (c *HostCache) DevuanSecurityHandler(w http.ResponseWriter, r *http.Request) {
+	if !c.validateHttpRequest(w, r) {
+		return
+	}
+	c.proxyHandler("devuan-security", w, r)
+}
+
+func (c *HostCache) DevuanSecurityHandlerTLS(w http.ResponseWriter, r *http.Request) {
+	c.optionalClientCert(w, r)
+	c.proxyHandler("devuan-security", w, r)
 }
 
 func (c *HostCache) OpenBSDHandler(w http.ResponseWriter, r *http.Request) {
