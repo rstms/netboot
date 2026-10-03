@@ -11,7 +11,7 @@ linux = $(if $(shell uname | grep -i linux),1,)
 
 openbsd_versions = 7.7 7.8 7.9
 debian_versions = bookworm trixie
-alpine_versions = 3.22.1 3.23.4
+alpine_versions = 3.23.6 3.24.2
 
 # functions for running only on selected OS
 openbsd_exec = $(if $(openbsd),$(1),@echo "not on openbsd, skipping: $(1)")
@@ -54,13 +54,13 @@ openbsd-79-img = $(dist_root)/pub/OpenBSD/7.9/amd64/miniroot79.img
 openbsd-79-netboot-iso = ipxe/openbsd-7.9-amd64.iso.gz
 openbsd-79-netboot-img = ipxe/openbsd-7.9-amd64.img.gz
 
-alpine-3221-kernel = $(dist_root)/alpine/3.22.1/x86_64/kernel
-alpine-3221-initrd = $(dist_root)/alpine/3.22.1/x86_64/initrd
-alpine-3221-modloop = $(dist_root)/alpine/3.22.1/x86_64/modloop
+alpine-3236-kernel = $(dist_root)/alpine/3.23.6/x86_64/kernel
+alpine-3236-initrd = $(dist_root)/alpine/3.23.6/x86_64/initrd
+alpine-3236-modloop = $(dist_root)/alpine/3.23.6/x86_64/modloop
 
-alpine-3234-kernel = $(dist_root)/alpine/3.23.4/x86_64/kernel
-alpine-3234-initrd = $(dist_root)/alpine/3.23.4/x86_64/initrd
-alpine-3234-modloop = $(dist_root)/alpine/3.23.4/x86_64/modloop
+alpine-3242-kernel = $(dist_root)/alpine/3.24.2/x86_64/kernel
+alpine-3242-initrd = $(dist_root)/alpine/3.24.2/x86_64/initrd
+alpine-3242-modloop = $(dist_root)/alpine/3.24.2/x86_64/modloop
 
 windows-11-iso = $(dist_root)/windows/11/x64/Win11_25H2_English_x64_v2.iso
 
@@ -89,9 +89,8 @@ debian-dist-files = \
 	$(debian-13-kernel) $(debian-13-initrd) 
 
 alpine-dist-files = \
-	$(alpine-3221-kernel) $(alpine-3221-initrd) \
-	$(alpine-3221-modloop) $(alpine-3234-kernel) \
-	$(alpine-3234-initrd) $(alpine-3234-modloop) 
+	$(alpine-3236-kernel) $(alpine-3236-initrd) $(alpine-3236-modloop) \
+	$(alpine-3242-kernel) $(alpine-3242-initrd) $(alpine-3242-modloop) 
 
 windows-dist-files = \
 	$(windows-11-iso)
@@ -124,23 +123,23 @@ $(debian-13-kernel):
 $(debian-13-initrd):
 	$(call curl_download,http://$(debian_mirror)/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz,$@)
 
-$(alpine-3221-kernel):
-	$(call curl_download,https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/vmlinuz-virt,$@)
+$(alpine-3236-kernel):
+	$(call curl_download,https://$(alpine_mirror)/v3.23/releases/x86_64/netboot-3.23.6/vmlinuz-virt,$@)
 
-$(alpine-3221-initrd):
-	$(call curl_download,https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/initramfs-virt,$@)
+$(alpine-3236-initrd):
+	$(call curl_download,https://$(alpine_mirror)/v3.23/releases/x86_64/netboot-3.23.6/initramfs-virt,$@)
 
-$(alpine-3221-modloop):
-	$(call curl_download,https://$(alpine_mirror)/v3.22/releases/x86_64/netboot-3.22.1/modloop-virt,$@)
+$(alpine-3236-modloop):
+	$(call curl_download,https://$(alpine_mirror)/v3.23/releases/x86_64/netboot-3.23.6/modloop-virt,$@)
 
-$(alpine-3234-kernel):
-	$(call curl_download,https://$(alpine_mirror)/v3.23/releases/x86_64/netboot-3.23.4/vmlinuz-virt,$@)
+$(alpine-3242-kernel):
+	$(call curl_download,https://$(alpine_mirror)/v3.24/releases/x86_64/netboot-3.24.2/vmlinuz-virt,$@)
 
-$(alpine-3234-initrd):
-	$(call curl_download,https://$(alpine_mirror)/v3.23/releases/x86_64/netboot-3.23.4/initramfs-virt,$@)
+$(alpine-3242-initrd):
+	$(call curl_download,https://$(alpine_mirror)/v3.24/releases/x86_64/netboot-3.24.2/initramfs-virt,$@)
 
-$(alpine-3234-modloop):
-	$(call curl_download,https://$(alpine_mirror)/v3.23/releases/x86_64/netboot-3.23.4/modloop-virt,$@)
+$(alpine-3242-modloop):
+	$(call curl_download,https://$(alpine_mirror)/v3.24/releases/x86_64/netboot-3.24.2/modloop-virt,$@)
 
 certs/cacerts.tgz: $(ca_certs)
 	cd certs/debian && tar zcfv ../cacerts.tgz etc

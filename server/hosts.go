@@ -1314,6 +1314,12 @@ func (c *HostCache) GenerateISO(tempDir, url, httpUrl string, config *message.Ne
 
 func (c *HostCache) gdlUrl(url, version, arch string) (string, error) {
 	gdlPath := filepath.Join(c.uploadDir, "pub", "OpenBSD", version, "packages", arch)
+	if !IsDir(gdlPath) {
+		err := os.MkdirAll(gdlPath, 0700)
+		if err != nil {
+			return "", Fatal(err)
+		}
+	}
 	files, err := files.TreeFiles(c.uploadDir, gdlPath)
 	if err != nil {
 		return "", Fatal(err)
